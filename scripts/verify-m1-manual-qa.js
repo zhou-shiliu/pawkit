@@ -98,6 +98,7 @@ function spawnElectron(homeDir, extraArgs = [], extraEnv = {}) {
       HOME: homeDir,
       PAWKIT_VITE_DEV_SERVER_URL: '',
       VITE_DEV_SERVER_URL: '',
+      PAWKIT_AUTOMATION_PRESENCE_OVERRIDE: 'idle',
       ...extraEnv,
     },
     stdio: ['ignore', 'ignore', 'pipe'],

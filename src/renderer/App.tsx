@@ -2,11 +2,23 @@ import { useEffect, useRef, useState } from 'react';
 import { StaticCatFigure } from './components/StaticCatFigure/StaticCatFigure';
 import { useCatState } from './hooks/useCatState';
 import { useRoamingCatState } from './hooks/useRoamingCatState';
+import { usePresenceState } from './hooks/usePresenceState';
 import { MoodText } from './components/MoodText/MoodText';
 import { clampPercent, getCarePrompt } from './systems/catBehavior';
 import styles from './App.module.css';
 
 const FEEDBACK_DURATION_MS = 2400;
+const GENTLE_PROMPT_THRESHOLD = 35;
+const URGENT_PROMPT_THRESHOLD = 20;
+
+function shouldShowCarePromptInMode(
+  mode: 'work' | 'idle',
+  state: Pick<ReturnType<typeof useCatState>['catState'], 'hunger' | 'hydration' | 'happiness'>,
+) {
+  const lowestNeed = Math.min(state.hunger, state.hydration, state.happiness);
+  if (lowestNeed >= GENTLE_PROMPT_THRESHOLD) return false;
+  return mode === 'idle' || lowestNeed < URGENT_PROMPT_THRESHOLD;
+}
 
 function formatGauge(value: number) {
   return Math.round(clampPercent(value));
@@ -26,6 +38,7 @@ function getActionFeedback(action: 'feed' | 'water' | 'pet') {
 export default function App() {
   const roamingState = useRoamingCatState();
   const { catState } = useCatState();
+  const presenceState = usePresenceState();
   const isWebPreview = !window.electronAPI?.getRoamingState;
   const carePrompt = getCarePrompt(catState);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
@@ -38,7 +51,9 @@ export default function App() {
   const previewTranslateStyle = isWebPreview
     ? { transform: `translateX(${Math.round(roamingState.x)}px)` }
     : undefined;
-  const bubbleMessage = feedbackMessage ?? carePrompt;
+  const bubbleMessage =
+    feedbackMessage ??
+    (shouldShowCarePromptInMode(presenceState.mode, catState) ? carePrompt : null);
   const careStatusItems = [
     { label: 'Food', value: formatGauge(catState.hunger) },
     { label: 'Water', value: formatGauge(catState.hydration) },
@@ -87,9 +102,17 @@ export default function App() {
   }, [catState.lastFed, catState.lastPet, catState.lastWatered]);
 
   return (
-    <main className={styles.desktop}>
-      <div className={styles.catAnchor} data-phase={roamingState.phase}>
-        <div className={styles.catStage} style={previewTranslateStyle}>
+    <main className={styles.desktop} data-presence-mode={presenceState.mode}>
+      <div
+        className={styles.catAnchor}
+        data-phase={roamingState.phase}
+        data-presence-mode={presenceState.mode}
+      >
+        <div
+          className={styles.catStage}
+          data-presence-mode={presenceState.mode}
+          style={previewTranslateStyle}
+        >
           <section className={styles.careStatusPanel} aria-label="care-status">
             {careStatusItems.map((item) => (
               <div className={styles.careStatusItem} key={item.label}>

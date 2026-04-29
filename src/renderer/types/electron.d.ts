@@ -17,6 +17,22 @@ export interface CatStatePayload {
   lastPet: number | null;
 }
 
+
+export type PresenceMode = 'work' | 'idle';
+export type PresenceOverride = 'auto' | 'work' | 'idle';
+export type PresenceIdleState = 'active' | 'idle' | 'locked' | 'unknown';
+
+export interface PresenceStatePayload {
+  mode: PresenceMode;
+  idleThresholdSeconds: number;
+  systemIdleSeconds: number;
+  idleState: PresenceIdleState;
+  manualOverride: PresenceOverride;
+  lastModeChangedAt: number;
+  lastUpdatedAt: number;
+  dock?: RoamingStatePayload;
+}
+
 export interface RoamingStatePayload {
   x: number;
   y: number;
@@ -29,14 +45,20 @@ export interface RoamingStatePayload {
 interface ElectronAPI {
   getCatState: () => Promise<CatStatePayload>;
   getRoamingState: () => Promise<RoamingStatePayload>;
+  getPresenceState: () => Promise<PresenceStatePayload>;
   feedCat: () => Promise<{ hunger: number; lastFed: number | null }>;
   waterCat: () => Promise<{ hydration: number; lastWatered: number | null }>;
   petCat: () => Promise<{ happiness: number; trustLevel: number; lastPet: number | null }>;
+  setPresenceIdleThreshold: (seconds: number) => Promise<PresenceStatePayload>;
+  setPresenceOverride: (override: PresenceOverride) => Promise<PresenceStatePayload>;
   onCatStateUpdated: (
     callback: (state: CatStatePayload & { lastUpdatedAt?: number }) => void,
   ) => void | (() => void);
   onRoamingStateUpdated: (
     callback: (state: RoamingStatePayload) => void,
+  ) => void | (() => void);
+  onPresenceStateUpdated: (
+    callback: (state: PresenceStatePayload) => void,
   ) => void | (() => void);
   onFeedCat: (callback: () => void) => void | (() => void);
   onWaterCat: (callback: () => void) => void | (() => void);

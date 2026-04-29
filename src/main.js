@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store').default;
@@ -9,6 +9,25 @@ const {
   toPersistedRoamingState,
   ROAMING_TICK_MS,
 } = require('./shared/roaming');
+const {
+  DEFAULT_IDLE_THRESHOLD_SECONDS,
+  IDLE_STATE,
+  IDLE_THRESHOLD_OPTIONS,
+  PRESENCE_MODE,
+  PRESENCE_OVERRIDE,
+  PRESENCE_TICK_MS,
+  createDockedPoint,
+  createInitialPresenceState,
+  formatIdleThresholdLabel,
+  normalizeIdleState,
+  normalizeIdleThresholdSeconds,
+  normalizePresenceOverride,
+  setPresenceIdleThreshold,
+  setPresenceOverride,
+  shouldShowCarePrompt,
+  toPersistedPresenceState,
+  updatePresenceState,
+} = require('./shared/presence');
 const {
   CARE_TICK_MS,
   advanceCareState,
@@ -31,6 +50,9 @@ const {
   syncPrimaryCareNeed,
   recordTrayMenuOpen,
   recordCareAction,
+  recordPresenceModeChange,
+  recordPresenceOverrideChange,
+  recordPresenceThresholdChange,
   createValidationArtifacts,
 } = require('./shared/validationMetrics');
 
@@ -113,6 +135,10 @@ let careRuntimeState = null;
 let careInterval = null;
 let lastCarePersistAt = 0;
 let validationRuntimeState = null;
+let presenceRuntimeState = null;
+let presenceInterval = null;
+let automationIdleSequence = null;
+let automationIdleSequenceIndex = 0;
 
 function createFallbackTrayIcon() {
   const svg = `
@@ -167,13 +193,109 @@ function getPersistedRoamingState() {
   return store.get('cat.roaming', null);
 }
 
-function getPersistedCareState() {
+function getPersistedPresenceState() {
   return {
-    hunger: store.get('cat.hunger', 50),
-    hydration: store.get('cat.hydration', 62),
-    happiness: store.get('cat.happiness', 50),
-    trustLevel: store.get('cat.trustLevel', 1),
-    lastUpdatedAt: store.get('cat.lastCareUpdatedAt', Date.now()),
+    idleThresholdSeconds: store.get('cat.presence.idleThresholdSeconds', DEFAULT_IDLE_THRESHOLD_SECONDS),
+    manualOverride: store.get('cat.presence.manualOverride', PRESENCE_OVERRIDE.AUTO),
+    lastModeChangedAt: store.get('cat.presence.lastModeChangedAt', Date.now()),
+  };
+}
+
+function persistPresenceState() {
+  if (!presenceRuntimeState) return;
+  const persisted = toPersistedPresenceState(presenceRuntimeState);
+  store.set('cat.presence.idleThresholdSeconds', persisted.idleThresholdSeconds);
+  store.set('cat.presence.manualOverride', persisted.manualOverride);
+  store.set('cat.presence.lastModeChangedAt', persisted.lastModeChangedAt);
+}
+
+function loadAutomationIdleSequence() {
+  const sequencePath = String(process.env.PAWKIT_AUTOMATION_IDLE_SEQUENCE_FILE || '').trim();
+  if (!sequencePath) return null;
+
+  try {
+    const payload = JSON.parse(fs.readFileSync(sequencePath, 'utf8'));
+    const sequence = Array.isArray(payload.sequence)
+      ? payload.sequence.map((value) => Math.max(0, Number(value) || 0))
+      : [];
+    if (sequence.length === 0) return null;
+    return {
+      sequence,
+      stepMs: Math.max(100, Number(payload.stepMs) || PRESENCE_TICK_MS),
+      startedAt: Date.now(),
+    };
+  } catch (error) {
+    console.error('Failed to load automation idle sequence:', error);
+    return null;
+  }
+}
+
+function getAutomationIdleSequenceSeconds() {
+  if (!automationIdleSequence) return null;
+  const elapsed = Date.now() - automationIdleSequence.startedAt;
+  const index = Math.min(
+    automationIdleSequence.sequence.length - 1,
+    Math.floor(elapsed / automationIdleSequence.stepMs),
+  );
+  automationIdleSequenceIndex = index;
+  return automationIdleSequence.sequence[index];
+}
+
+function getSystemIdleSeconds() {
+  const sequenceValue = getAutomationIdleSequenceSeconds();
+  if (sequenceValue != null) return sequenceValue;
+
+  const override = process.env.PAWKIT_AUTOMATION_IDLE_SECONDS;
+  if (override !== undefined) return Math.max(0, Number(override) || 0);
+
+  return powerMonitor.getSystemIdleTime();
+}
+
+function getSystemPresenceIdleState(thresholdSeconds) {
+  const override = String(process.env.PAWKIT_AUTOMATION_IDLE_STATE || '').trim();
+  if (override) return normalizeIdleState(override);
+  if (getAutomationIdleSequenceSeconds() != null || process.env.PAWKIT_AUTOMATION_IDLE_SECONDS !== undefined) {
+    return getSystemIdleSeconds() >= thresholdSeconds ? IDLE_STATE.IDLE : IDLE_STATE.ACTIVE;
+  }
+  return normalizeIdleState(powerMonitor.getSystemIdleState(thresholdSeconds));
+}
+
+function getCurrentPresenceSnapshot() {
+  if (!presenceRuntimeState) {
+    presenceRuntimeState = createInitialPresenceState({
+      persistedState: getPersistedPresenceState(),
+      systemIdleSeconds: getSystemIdleSeconds(),
+      idleState: getSystemPresenceIdleState(DEFAULT_IDLE_THRESHOLD_SECONDS),
+      now: Date.now(),
+    });
+  }
+  return {
+    ...presenceRuntimeState,
+    dock: createDockedPoint(getPrimaryRoamingArea(), DEFAULT_WINDOW_SIZE),
+  };
+}
+
+function getAutomationCareSeed() {
+  const rawState = String(process.env.PAWKIT_AUTOMATION_CARE_STATE || '').trim();
+  if (!rawState) return null;
+
+  try {
+    const parsed = JSON.parse(rawState);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (error) {
+    console.error('Failed to parse automation care state:', error);
+    return null;
+  }
+}
+
+function getPersistedCareState() {
+  const automationCareState = getAutomationCareSeed();
+  return {
+    hunger: automationCareState?.hunger ?? store.get('cat.hunger', 50),
+    hydration: automationCareState?.hydration ?? store.get('cat.hydration', 62),
+    happiness: automationCareState?.happiness ?? store.get('cat.happiness', 50),
+    trustLevel: automationCareState?.trustLevel ?? store.get('cat.trustLevel', 1),
+    lastUpdatedAt: automationCareState?.lastUpdatedAt ?? store.get('cat.lastCareUpdatedAt', Date.now()),
   };
 }
 
@@ -264,11 +386,17 @@ function syncValidationNeedPresentation(presentation) {
   const now = Date.now();
   const currentState = ensureValidationState(now);
   const currentKey = getNeedKeyFromState(currentState);
-  const nextKey = getNeedKeyFromPresentation(presentation);
+  const visiblePresentation = presentation && shouldShowCarePrompt({
+    mode: presenceRuntimeState?.mode ?? PRESENCE_MODE.IDLE,
+    careState: careRuntimeState ?? getPersistedCareState(),
+  })
+    ? presentation
+    : null;
+  const nextKey = getNeedKeyFromPresentation(visiblePresentation);
 
   if (currentKey === nextKey) return;
 
-  validationRuntimeState = syncPrimaryCareNeed(currentState, presentation, { now });
+  validationRuntimeState = syncPrimaryCareNeed(currentState, visiblePresentation, { now });
   persistValidationState();
 }
 
@@ -288,6 +416,33 @@ function recordValidationCareAction(action, source) {
   persistValidationState();
 }
 
+function recordValidationPresenceModeChange(previousMode, mode, durationMs) {
+  validationRuntimeState = recordPresenceModeChange(ensureValidationState(Date.now()), {
+    previousMode,
+    mode,
+    durationMs,
+    now: Date.now(),
+  });
+  persistValidationState();
+}
+
+function recordValidationPresenceOverrideChange(override) {
+  validationRuntimeState = recordPresenceOverrideChange(ensureValidationState(Date.now()), {
+    override,
+    now: Date.now(),
+  });
+  persistValidationState();
+}
+
+function recordValidationPresenceThresholdChange(thresholdSeconds) {
+  validationRuntimeState = recordPresenceThresholdChange(ensureValidationState(Date.now()), {
+    thresholdSeconds,
+    now: Date.now(),
+  });
+  persistValidationState();
+}
+
+
 async function openValidationReport() {
   const paths = writeValidationArtifacts();
   const result = await shell.openPath(paths.markdown);
@@ -301,6 +456,35 @@ function sendCareStateUpdate() {
   mainWindow.webContents.send('cat-state-updated', getCurrentCareSnapshot());
 }
 
+
+function setPresenceOverrideFromMenu(override) {
+  const now = Date.now();
+  presenceRuntimeState = setPresenceOverride(getCurrentPresenceSnapshot(), override, {
+    now,
+    systemIdleSeconds: getSystemIdleSeconds(),
+    idleState: getSystemPresenceIdleState(getCurrentPresenceSnapshot().idleThresholdSeconds),
+  });
+  persistPresenceState();
+  recordValidationPresenceOverrideChange(presenceRuntimeState.manualOverride);
+  syncWindowToPresenceState();
+  sendPresenceStateUpdate();
+  rebuildTrayMenu();
+}
+
+function setPresenceIdleThresholdFromMenu(seconds) {
+  const now = Date.now();
+  presenceRuntimeState = setPresenceIdleThreshold(getCurrentPresenceSnapshot(), seconds, {
+    now,
+    systemIdleSeconds: getSystemIdleSeconds(),
+    idleState: getSystemPresenceIdleState(seconds),
+  });
+  persistPresenceState();
+  recordValidationPresenceThresholdChange(presenceRuntimeState.idleThresholdSeconds);
+  syncWindowToPresenceState();
+  sendPresenceStateUpdate();
+  rebuildTrayMenu();
+}
+
 function rebuildTrayMenu() {
   if (!tray) return;
 
@@ -312,7 +496,38 @@ function rebuildTrayMenu() {
     ? `当前需要：${primaryNeed.menuSummary}`
     : '当前状态：稳定，可以随时照料它';
 
+  const presenceSnapshot = getCurrentPresenceSnapshot();
+  const modeLabel = presenceSnapshot.mode === PRESENCE_MODE.IDLE ? '闲置态' : '工作态';
+  const overrideLabel = presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.AUTO
+    ? '自动'
+    : presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.IDLE
+      ? '强制闲置态'
+      : '强制工作态';
+  const thresholdLabel = formatIdleThresholdLabel(presenceSnapshot.idleThresholdSeconds);
+
   const contextMenu = Menu.buildFromTemplate([
+    { label: `当前模式：${modeLabel}`, enabled: false },
+    { label: `控制方式：${overrideLabel}`, enabled: false },
+    { label: `闲置阈值：${thresholdLabel}`, enabled: false },
+    { type: 'separator' },
+    {
+      label: '模式控制',
+      submenu: [
+        { label: '自动', type: 'radio', checked: presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.AUTO, click: () => setPresenceOverrideFromMenu(PRESENCE_OVERRIDE.AUTO) },
+        { label: '强制工作态', type: 'radio', checked: presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.WORK, click: () => setPresenceOverrideFromMenu(PRESENCE_OVERRIDE.WORK) },
+        { label: '强制闲置态', type: 'radio', checked: presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.IDLE, click: () => setPresenceOverrideFromMenu(PRESENCE_OVERRIDE.IDLE) },
+      ],
+    },
+    {
+      label: '闲置阈值',
+      submenu: IDLE_THRESHOLD_OPTIONS.map((seconds) => ({
+        label: formatIdleThresholdLabel(seconds),
+        type: 'radio',
+        checked: presenceSnapshot.idleThresholdSeconds === seconds,
+        click: () => setPresenceIdleThresholdFromMenu(seconds),
+      })),
+    },
+    { type: 'separator' },
     { label: careSummary, enabled: false },
     { type: 'separator' },
     { label: getCareActionLabel('feed', recommendedAction), click: () => applyCareAction('feed', { source: 'tray' }) },
@@ -412,6 +627,54 @@ function applyCareAction(actionType, { source = 'unknown' } = {}) {
 }
 
 
+function getAutomationRendererSnapshotScript() {
+  return `(() => {
+    const root = document.querySelector('[data-presence-mode]');
+    const panel = document.querySelector('[aria-label="care-status"]');
+    const hud = document.querySelector('[aria-label="care-hud"]');
+    const toSnapshot = (element) => {
+      const rect = element ? element.getBoundingClientRect() : null;
+      const style = element ? window.getComputedStyle(element) : null;
+      const visible = Boolean(
+        element &&
+        rect &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style &&
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        Number(style.opacity || 1) > 0
+      );
+      return {
+        text: element?.textContent?.replace(/\\s+/g, ' ').trim() ?? '',
+        visible,
+        rect: rect
+          ? {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+            }
+          : null,
+      };
+    };
+    const careStatus = toSnapshot(panel);
+    return {
+      presenceMode: root?.getAttribute('data-presence-mode') ?? null,
+      text: careStatus.text,
+      visible: careStatus.visible,
+      rect: careStatus.rect,
+      careStatus,
+      careHud: toSnapshot(hud),
+    };
+  })()`;
+}
+
+function captureAutomationRendererSnapshot() {
+  if (!mainWindow || mainWindow.isDestroyed()) return Promise.resolve(null);
+  return mainWindow.webContents.executeJavaScript(getAutomationRendererSnapshotScript(), true);
+}
+
 function maybeWriteAutomationRendererStatusSnapshot() {
   const statusFile = String(process.env.PAWKIT_AUTOMATION_RENDERER_STATUS_FILE || '').trim();
   if (!statusFile || !mainWindow || mainWindow.isDestroyed()) return;
@@ -419,36 +682,7 @@ function maybeWriteAutomationRendererStatusSnapshot() {
   setTimeout(() => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
 
-    mainWindow.webContents
-      .executeJavaScript(
-        `(() => {
-          const panel = document.querySelector('[aria-label="care-status"]');
-          const rect = panel ? panel.getBoundingClientRect() : null;
-          const style = panel ? window.getComputedStyle(panel) : null;
-          return {
-            text: panel?.textContent?.replace(/\\s+/g, ' ').trim() ?? '',
-            visible: Boolean(
-              panel &&
-              rect &&
-              rect.width > 0 &&
-              rect.height > 0 &&
-              style &&
-              style.display !== 'none' &&
-              style.visibility !== 'hidden' &&
-              Number(style.opacity || 1) > 0
-            ),
-            rect: rect
-              ? {
-                  x: Math.round(rect.x),
-                  y: Math.round(rect.y),
-                  width: Math.round(rect.width),
-                  height: Math.round(rect.height),
-                }
-              : null,
-          };
-        })()`,
-        true,
-      )
+    captureAutomationRendererSnapshot()
       .then((snapshot) => {
         fs.writeFileSync(
           statusFile,
@@ -466,6 +700,47 @@ function maybeWriteAutomationRendererStatusSnapshot() {
         console.error('Failed to capture renderer status snapshot:', error);
       });
   }, 450);
+}
+
+
+function maybeWriteAutomationPresenceStatusSnapshot() {
+  const statusFile = String(process.env.PAWKIT_AUTOMATION_PRESENCE_STATUS_FILE || '').trim();
+  if (!statusFile) return;
+
+  const samples = [];
+  const startedAt = Date.now();
+  const durationMs = Math.max(2500, Number(process.env.PAWKIT_AUTOMATION_PRESENCE_SAMPLE_MS) || 3600);
+  const intervalMs = Math.max(120, Number(process.env.PAWKIT_AUTOMATION_PRESENCE_SAMPLE_INTERVAL_MS) || 240);
+
+  const timerId = setInterval(() => {
+    const presence = getCurrentPresenceSnapshot();
+    const bounds = mainWindow?.getBounds();
+    const sampleBase = {
+      at: new Date().toISOString(),
+      presence,
+      roaming: roamingRuntimeState ? toPersistedRoamingState(roamingRuntimeState) : null,
+      windowBounds: bounds ?? null,
+      automationIdleSequenceIndex,
+    };
+
+    captureAutomationRendererSnapshot()
+      .then((renderer) => {
+        samples.push({ ...sampleBase, renderer });
+      })
+      .catch((error) => {
+        samples.push({ ...sampleBase, renderer: null, rendererError: String(error?.message || error) });
+      });
+
+    if (Date.now() - startedAt < durationMs) return;
+    clearInterval(timerId);
+    setTimeout(() => {
+      try {
+        fs.writeFileSync(statusFile, JSON.stringify({ samples }, null, 2));
+      } catch (error) {
+        console.error('Failed to write automation presence status file:', error);
+      }
+    }, 80);
+  }, intervalMs);
 }
 
 function maybeRunAutomationCareActions() {
@@ -506,6 +781,7 @@ function maybeRunAutomationCareActions() {
 
 function persistRoamingState(force = false) {
   if (!roamingRuntimeState) return;
+  if (!force && presenceRuntimeState?.mode === PRESENCE_MODE.WORK) return;
 
   const now = Date.now();
   if (!force && now - lastRoamingPersistAt < ROAMING_PERSIST_INTERVAL_MS) {
@@ -521,13 +797,23 @@ function sendRoamingStateUpdate() {
   mainWindow.webContents.send('roaming-state-updated', toPersistedRoamingState(roamingRuntimeState));
 }
 
-function syncWindowToRoamingState() {
-  if (!mainWindow || mainWindow.isDestroyed() || !roamingRuntimeState) return;
+function sendPresenceStateUpdate() {
+  if (!mainWindow || mainWindow.isDestroyed() || !presenceRuntimeState) return;
+  mainWindow.webContents.send('presence-state-updated', getCurrentPresenceSnapshot());
+}
+
+function syncWindowToPresenceState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const presenceSnapshot = getCurrentPresenceSnapshot();
+  const position = presenceSnapshot.mode === PRESENCE_MODE.WORK
+    ? createDockedPoint(getPrimaryRoamingArea(), DEFAULT_WINDOW_SIZE)
+    : roamingRuntimeState;
+  if (!position) return;
 
   mainWindow.setBounds(
     {
-      x: Math.round(roamingRuntimeState.x),
-      y: Math.round(roamingRuntimeState.y),
+      x: Math.round(position.x),
+      y: Math.round(position.y),
       width: DEFAULT_WINDOW_SIZE.width,
       height: DEFAULT_WINDOW_SIZE.height,
     },
@@ -548,28 +834,77 @@ function startRoamingLoop() {
   roamingInterval = setInterval(() => {
     if (!mainWindow || mainWindow.isDestroyed() || !roamingRuntimeState) return;
 
-    roamingRuntimeState = advanceRoamingState(roamingRuntimeState, {
-      workArea: getPrimaryRoamingArea(),
-      now: Date.now(),
-      rng: Math.random,
-    });
+    if (presenceRuntimeState?.mode === PRESENCE_MODE.IDLE) {
+      roamingRuntimeState = advanceRoamingState(roamingRuntimeState, {
+        workArea: getPrimaryRoamingArea(),
+        now: Date.now(),
+        rng: Math.random,
+      });
+    }
 
-    syncWindowToRoamingState();
+    syncWindowToPresenceState();
     persistRoamingState();
     sendRoamingStateUpdate();
   }, ROAMING_TICK_MS);
+}
+
+
+function stopPresenceLoop() {
+  if (presenceInterval) {
+    clearInterval(presenceInterval);
+    presenceInterval = null;
+  }
+}
+
+function startPresenceLoop() {
+  stopPresenceLoop();
+  presenceInterval = setInterval(() => {
+    if (!presenceRuntimeState) return;
+    const previous = presenceRuntimeState;
+    const now = Date.now();
+    presenceRuntimeState = updatePresenceState(presenceRuntimeState, {
+      systemIdleSeconds: getSystemIdleSeconds(),
+      idleState: getSystemPresenceIdleState(presenceRuntimeState.idleThresholdSeconds),
+      now,
+    });
+
+    if (presenceRuntimeState.mode !== previous.mode) {
+      recordValidationPresenceModeChange(
+        previous.mode,
+        presenceRuntimeState.mode,
+        now - previous.lastModeChangedAt,
+      );
+      persistPresenceState();
+      rebuildTrayMenu();
+    }
+
+    syncWindowToPresenceState();
+    sendPresenceStateUpdate();
+  }, PRESENCE_TICK_MS);
 }
 
 const createWindow = () => {
   const now = Date.now();
   const workArea = getPrimaryRoamingArea();
 
+  automationIdleSequence = loadAutomationIdleSequence();
   roamingRuntimeState = createInitialRoamingState({
     workArea,
     persistedState: getPersistedRoamingState(),
     now,
     rng: Math.random,
   });
+  presenceRuntimeState = createInitialPresenceState({
+    persistedState: {
+      ...getPersistedPresenceState(),
+      manualOverride: process.env.PAWKIT_AUTOMATION_PRESENCE_OVERRIDE || getPersistedPresenceState().manualOverride,
+      idleThresholdSeconds: process.env.PAWKIT_AUTOMATION_IDLE_THRESHOLD_SECONDS || getPersistedPresenceState().idleThresholdSeconds,
+    },
+    systemIdleSeconds: getSystemIdleSeconds(),
+    idleState: getSystemPresenceIdleState(normalizeIdleThresholdSeconds(process.env.PAWKIT_AUTOMATION_IDLE_THRESHOLD_SECONDS || getPersistedPresenceState().idleThresholdSeconds)),
+    now,
+  });
+  persistPresenceState();
   careRuntimeState = createInitialCareState({
     persistedState: getPersistedCareState(),
     now,
@@ -579,8 +914,8 @@ const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: DEFAULT_WINDOW_SIZE.width,
     height: DEFAULT_WINDOW_SIZE.height,
-    x: Math.round(roamingRuntimeState.x),
-    y: Math.round(roamingRuntimeState.y),
+    x: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, DEFAULT_WINDOW_SIZE) : roamingRuntimeState).x),
+    y: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, DEFAULT_WINDOW_SIZE) : roamingRuntimeState).y),
     frame: false,
     transparent: true,
     resizable: false,
@@ -618,11 +953,15 @@ const createWindow = () => {
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
   mainWindow.once('ready-to-show', () => {
     mainWindow?.showInactive();
+    syncWindowToPresenceState();
     sendRoamingStateUpdate();
+    sendPresenceStateUpdate();
     sendCareStateUpdate();
     maybeWriteAutomationRendererStatusSnapshot();
+    maybeWriteAutomationPresenceStatusSnapshot();
   });
 
+  startPresenceLoop();
   startRoamingLoop();
   startCareLoop();
 };
@@ -682,8 +1021,10 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   persistRoamingState(true);
+  persistPresenceState();
   persistCareState(true);
   persistValidationState();
+  stopPresenceLoop();
   stopRoamingLoop();
   stopCareLoop();
   releaseProcessLock();
@@ -711,6 +1052,19 @@ ipcMain.handle('get-cat-state', () => {
     lastWatered: store.get('cat.lastWatered', null),
     lastPet: store.get('cat.lastPet', null),
   };
+});
+
+
+ipcMain.handle('get-presence-state', () => getCurrentPresenceSnapshot());
+
+ipcMain.handle('set-presence-idle-threshold', (_event, seconds) => {
+  setPresenceIdleThresholdFromMenu(seconds);
+  return getCurrentPresenceSnapshot();
+});
+
+ipcMain.handle('set-presence-override', (_event, override) => {
+  setPresenceOverrideFromMenu(normalizePresenceOverride(override));
+  return getCurrentPresenceSnapshot();
 });
 
 ipcMain.handle('get-roaming-state', () => {

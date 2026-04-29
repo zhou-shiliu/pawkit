@@ -166,3 +166,33 @@
   opacity: 0.16;
   transform: scaleX(0.92);
 }
+
+.catStage[data-presence-mode='work'] .catBody {
+  animation: workPresenceBreath 4.8s ease-in-out infinite;
+}
+
+.catStage[data-presence-mode='work'] .shadow {
+  animation: workPresenceShadow 4.8s ease-in-out infinite;
+}
+
+@keyframes workPresenceBreath {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.01);
+  }
+}
+
+@keyframes workPresenceShadow {
+  0%,
+  100% {
+    opacity: 0.24;
+    transform: scaleX(1);
+  }
+  50% {
+    opacity: 0.18;
+    transform: scaleX(0.94);
+  }
+}
