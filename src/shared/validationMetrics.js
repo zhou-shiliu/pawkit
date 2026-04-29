@@ -1,6 +1,8 @@
 const CARE_ACTIONS = Object.freeze(['feed', 'water', 'pet']);
 const CARE_SEVERITIES = Object.freeze(['gentle', 'urgent']);
 const CARE_SOURCES = Object.freeze(['tray', 'ipc', 'automation', 'unknown']);
+const PRESENCE_MODES = Object.freeze(['work', 'idle']);
+const PRESENCE_OVERRIDES = Object.freeze(['auto', 'work', 'idle']);
 const MAX_RECENT_EVENTS = 40;
 const VALIDATION_SCHEMA_VERSION = 1;
 
@@ -25,6 +27,14 @@ function normalizeSource(value) {
   return CARE_SOURCES.includes(value) ? value : 'unknown';
 }
 
+function normalizePresenceMode(value) {
+  return PRESENCE_MODES.includes(value) ? value : 'work';
+}
+
+function normalizePresenceOverride(value) {
+  return PRESENCE_OVERRIDES.includes(value) ? value : 'auto';
+}
+
 function createActionCounter() {
   return {
     feed: 0,
@@ -47,6 +57,21 @@ function createSourceCounter() {
     ipc: 0,
     automation: 0,
     unknown: 0,
+  };
+}
+
+function createPresenceModeCounter() {
+  return {
+    work: 0,
+    idle: 0,
+  };
+}
+
+function createPresenceOverrideCounter() {
+  return {
+    auto: 0,
+    work: 0,
+    idle: 0,
   };
 }
 
@@ -118,6 +143,21 @@ function cloneSourceCounter(counter = {}) {
   };
 }
 
+function clonePresenceModeCounter(counter = {}) {
+  return {
+    work: Math.max(0, Math.floor(toFiniteNumber(counter.work, 0))),
+    idle: Math.max(0, Math.floor(toFiniteNumber(counter.idle, 0))),
+  };
+}
+
+function clonePresenceOverrideCounter(counter = {}) {
+  return {
+    auto: Math.max(0, Math.floor(toFiniteNumber(counter.auto, 0))),
+    work: Math.max(0, Math.floor(toFiniteNumber(counter.work, 0))),
+    idle: Math.max(0, Math.floor(toFiniteNumber(counter.idle, 0))),
+  };
+}
+
 function createEmptyValidationState({ now = Date.now() } = {}) {
   return {
     schemaVersion: VALIDATION_SCHEMA_VERSION,
@@ -137,6 +177,10 @@ function createEmptyValidationState({ now = Date.now() } = {}) {
       unpromptedCareActionCount: 0,
       firstResponseLatency: createLatencyStat(),
       firstResponseLatencyByAction: createLatencyByAction(),
+      presenceModeSwitchCount: 0,
+      presenceModeDurationsMs: createPresenceModeCounter(),
+      presenceOverrideCounts: createPresenceOverrideCounter(),
+      presenceThresholdChangeCount: 0,
     },
     recentEvents: [],
     activeNeed: null,
@@ -150,6 +194,10 @@ function normalizeEvent(event = {}, fallbackNow = Date.now()) {
     action: normalizeAction(event.action),
     severity: normalizeSeverity(event.severity),
     source: normalizeSource(event.source),
+    mode: event.mode == null ? null : normalizePresenceMode(event.mode),
+    previousMode: event.previousMode == null ? null : normalizePresenceMode(event.previousMode),
+    override: event.override == null ? null : normalizePresenceOverride(event.override),
+    thresholdSeconds: event.thresholdSeconds == null ? null : Math.max(0, Math.floor(toFiniteNumber(event.thresholdSeconds, 0))),
     matchedNeed: event.matchedNeed === true,
     latencyMs: event.latencyMs == null ? null : Math.max(0, toFiniteNumber(event.latencyMs, 0)),
     prompt: typeof event.prompt === 'string' ? event.prompt : null,
@@ -204,6 +252,10 @@ function normalizeValidationState(state, now = Date.now()) {
         water: cloneLatencyStat(summary.firstResponseLatencyByAction?.water),
         pet: cloneLatencyStat(summary.firstResponseLatencyByAction?.pet),
       },
+      presenceModeSwitchCount: Math.max(0, Math.floor(toFiniteNumber(summary.presenceModeSwitchCount, 0))),
+      presenceModeDurationsMs: clonePresenceModeCounter(summary.presenceModeDurationsMs),
+      presenceOverrideCounts: clonePresenceOverrideCounter(summary.presenceOverrideCounts),
+      presenceThresholdChangeCount: Math.max(0, Math.floor(toFiniteNumber(summary.presenceThresholdChangeCount, 0))),
     },
     recentEvents: Array.isArray(base.recentEvents)
       ? base.recentEvents
@@ -386,6 +438,53 @@ function recordCareAction(state, { action, source = 'unknown', now = Date.now() 
   return nextState;
 }
 
+
+function recordPresenceModeChange(state, { previousMode = null, mode, durationMs = 0, now = Date.now() } = {}) {
+  const nextState = cloneState(state, now);
+  const safeMode = normalizePresenceMode(mode);
+  const safePreviousMode = previousMode == null ? null : normalizePresenceMode(previousMode);
+
+  nextState.summary.presenceModeSwitchCount += 1;
+  if (safePreviousMode) {
+    nextState.summary.presenceModeDurationsMs[safePreviousMode] += Math.max(0, toFiniteNumber(durationMs, 0));
+  }
+
+  appendEvent(nextState, {
+    type: 'presence-mode-changed',
+    at: now,
+    previousMode: safePreviousMode,
+    mode: safeMode,
+  }, now);
+  nextState.summary.lastUpdatedAt = now;
+  return nextState;
+}
+
+function recordPresenceOverrideChange(state, { override, now = Date.now() } = {}) {
+  const nextState = cloneState(state, now);
+  const safeOverride = normalizePresenceOverride(override);
+  nextState.summary.presenceOverrideCounts[safeOverride] += 1;
+  appendEvent(nextState, {
+    type: 'presence-override-changed',
+    at: now,
+    override: safeOverride,
+  }, now);
+  nextState.summary.lastUpdatedAt = now;
+  return nextState;
+}
+
+function recordPresenceThresholdChange(state, { thresholdSeconds, now = Date.now() } = {}) {
+  const nextState = cloneState(state, now);
+  const safeThreshold = Math.max(0, Math.floor(toFiniteNumber(thresholdSeconds, 0)));
+  nextState.summary.presenceThresholdChangeCount += 1;
+  appendEvent(nextState, {
+    type: 'presence-idle-threshold-changed',
+    at: now,
+    thresholdSeconds: safeThreshold,
+  }, now);
+  nextState.summary.lastUpdatedAt = now;
+  return nextState;
+}
+
 function formatDateTime(timestamp) {
   if (!Number.isFinite(timestamp) || timestamp <= 0) return '-';
   return new Date(timestamp).toISOString();
@@ -455,6 +554,19 @@ function describeEvent(event) {
     return `- ${at} · 打开菜单栏${activeNeed}`;
   }
 
+  if (event.type === 'presence-mode-changed') {
+    const previous = event.previousMode ? `${event.previousMode} -> ` : '';
+    return `- ${at} · 存在模式切换：${previous}${event.mode}`;
+  }
+
+  if (event.type === 'presence-override-changed') {
+    return `- ${at} · 存在模式手动控制：${event.override}`;
+  }
+
+  if (event.type === 'presence-idle-threshold-changed') {
+    return `- ${at} · 闲置阈值更新：${event.thresholdSeconds}s`;
+  }
+
   if (event.type === 'care-action') {
     const matchedNeed = event.matchedNeed ? '命中当前需求' : '未命中当前需求';
     const latency = event.latencyMs != null ? ` / 首次响应耗时 ${formatDuration(event.latencyMs)}` : '';
@@ -494,6 +606,9 @@ function createValidationArtifacts(state, { generatedAt = Date.now() } = {}) {
     `- Unprompted care actions: ${summary.unpromptedCareActionCount}`,
     `- Off-target care actions: ${summary.offTargetCareActionCount}`,
     `- Current active need: ${activeNeed ? `${getActionLabel(activeNeed.action)} / ${getSeverityLabel(activeNeed.severity)}` : 'none'}`,
+    `- Presence mode switches: ${summary.presenceModeSwitchCount}`,
+    `- Presence durations: work ${formatDuration(summary.presenceModeDurationsMs.work)} / idle ${formatDuration(summary.presenceModeDurationsMs.idle)}`,
+    `- Presence threshold changes: ${summary.presenceThresholdChangeCount}`,
     '',
     '## Prompt counts',
     '',
@@ -538,5 +653,8 @@ module.exports = {
   syncPrimaryCareNeed,
   recordTrayMenuOpen,
   recordCareAction,
+  recordPresenceModeChange,
+  recordPresenceOverrideChange,
+  recordPresenceThresholdChange,
   createValidationArtifacts,
 };
