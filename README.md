@@ -57,7 +57,7 @@ npm run electron:dev
 - 验证方案：`docs/VALIDATION-PLAN.md`
 - M1 需求：`.omx/plans/prd-presence-first-roaming-m1.md`
 - M1 测试规范：`.omx/plans/test-spec-presence-first-roaming-m1.md`
-- M2 PRD：`.omx/plans/prd-dual-presence-mode.md`
-- M2 测试规范：`.omx/plans/test-spec-dual-presence-mode.md`
+- M2 PRD：`docs/M2-PRESENCE-PRD.md`
+- M2 测试规范：`docs/M2-PRESENCE-TEST-SPEC.md`
 - M2 手工 QA：`docs/M2-PRESENCE-QA-CHECKLIST.md`
 - M1 收口标准：`docs/NEXT-PHASE-EXIT-CRITERIA.md`
