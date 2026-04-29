@@ -1,0 +1,43 @@
+.figure {
+  --trust-halo: rgba(255, 248, 240, 0.78);
+  position: relative;
+  width: 142px;
+  height: 104px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+  user-select: none;
+}
+
+.floorGlow {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  width: 90px;
+  height: 18px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 213, 150, 0.45) 0%,
+    rgba(255, 213, 150, 0.12) 58%,
+    rgba(255, 213, 150, 0) 100%
+  );
+  filter: blur(6px);
+}
+
+.cat {
+  position: relative;
+  z-index: 2;
+  width: 132px;
+  height: auto;
+  display: block;
+  transform-origin: center bottom;
+  filter: drop-shadow(0 7px 14px rgba(94, 62, 26, 0.18));
+  transition: transform 180ms ease;
+}
+
+.right {
+  transform: scaleX(-1);
+}

@@ -1,0 +1,92 @@
+<svg width="240" height="160" viewBox="0 0 240 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="furBody" x1="56" y1="44" x2="178" y2="126" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6C27A"/>
+      <stop offset="0.55" stop-color="#E39A4A"/>
+      <stop offset="1" stop-color="#D6812D"/>
+    </linearGradient>
+    <linearGradient id="furHead" x1="50" y1="24" x2="118" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F9CF90"/>
+      <stop offset="0.6" stop-color="#E39A4A"/>
+      <stop offset="1" stop-color="#D4802B"/>
+    </linearGradient>
+    <linearGradient id="furTail" x1="171" y1="19" x2="209" y2="107" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD596"/>
+      <stop offset="0.6" stop-color="#E39A4A"/>
+      <stop offset="1" stop-color="#D47D29"/>
+    </linearGradient>
+  </defs>
+
+  <path
+    d="M173 100C198 89 210 66 209 43C208 29 201 20 193 20"
+    stroke="#4A2E1A"
+    stroke-width="30"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M173 100C198 89 210 66 209 43C208 29 201 20 193 20"
+    stroke="url(#furTail)"
+    stroke-width="24"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path d="M181 90L191 85" stroke="#D97A1D" stroke-width="7" stroke-linecap="round"/>
+  <path d="M192 72L204 67" stroke="#D97A1D" stroke-width="7" stroke-linecap="round"/>
+  <path d="M198 52L208 48" stroke="#D97A1D" stroke-width="7" stroke-linecap="round"/>
+
+  <path
+    d="M74 88C79 61 98 47 128 48H146C162 48 175 59 180 76L184 89C187 100 182 112 171 118L150 129H90C79 129 69 121 67 110L65 100C64 96 68 90 74 88Z"
+    fill="url(#furBody)"
+    stroke="#4A2E1A"
+    stroke-width="4"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M75 96C85 92 96 92 110 97C120 101 136 101 159 99C157 112 149 123 140 129H91C81 129 73 121 72 111L71 101C71 99 73 97 75 96Z"
+    fill="#FFF0C9"
+    opacity="0.95"
+  />
+
+  <rect x="80" y="92" width="16" height="42" rx="8" fill="#F0A559" stroke="#4A2E1A" stroke-width="4"/>
+  <rect x="98" y="90" width="16" height="44" rx="8" fill="#FFD08B" stroke="#4A2E1A" stroke-width="4"/>
+  <rect x="141" y="90" width="16" height="44" rx="8" fill="#F0A559" stroke="#4A2E1A" stroke-width="4"/>
+  <rect x="160" y="92" width="16" height="42" rx="8" fill="#F7B364" stroke="#4A2E1A" stroke-width="4"/>
+
+  <path d="M94 82C96 72 103 65 112 61" stroke="#D97A1D" stroke-width="7" stroke-linecap="round"/>
+  <path d="M112 82C114 71 122 64 132 59" stroke="#D97A1D" stroke-width="7" stroke-linecap="round"/>
+  <path d="M130 84C134 73 142 66 153 62" stroke="#D97A1D" stroke-width="7" stroke-linecap="round"/>
+  <path d="M151 86C155 76 162 70 169 66" stroke="#D97A1D" stroke-width="7" stroke-linecap="round"/>
+
+  <path
+    d="M49 88C38 80 35 65 41 52C47 39 59 30 74 29L95 33C107 39 114 49 114 63C114 79 104 92 90 98L68 99L49 88Z"
+    fill="url(#furHead)"
+    stroke="#4A2E1A"
+    stroke-width="4"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M62 99C50 97 41 90 38 81C37 76 40 71 45 70L63 68C72 68 80 74 82 84L83 92C83 96 80 99 76 99H62Z"
+    fill="#FFF0C9"
+    stroke="#4A2E1A"
+    stroke-width="4"
+    stroke-linejoin="round"
+  />
+  <path d="M64 31L74 14L84 35Z" fill="#E3903E" stroke="#4A2E1A" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M84 33L96 14L104 40Z" fill="#EEA04E" stroke="#4A2E1A" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M69 31L74 20L80 33Z" fill="#F2A7A7"/>
+  <path d="M88 33L95 21L99 37Z" fill="#F2A7A7"/>
+
+  <circle cx="69" cy="60" r="8" fill="#FFC83D" stroke="#4A2E1A" stroke-width="4"/>
+  <circle cx="71" cy="60" r="3.5" fill="#4A2E1A"/>
+  <circle cx="67" cy="57" r="1.8" fill="#FFF8EE"/>
+  <path d="M42 76L35 74L42 71Z" fill="#F2A7A7" stroke="#4A2E1A" stroke-width="3" stroke-linejoin="round"/>
+
+  <path d="M77 51L92 46" stroke="#D97A1D" stroke-width="6" stroke-linecap="round"/>
+  <path d="M81 65L97 61" stroke="#D97A1D" stroke-width="6" stroke-linecap="round"/>
+  <path d="M84 77L99 74" stroke="#D97A1D" stroke-width="6" stroke-linecap="round"/>
+
+  <path d="M44 79L27 74" stroke="#BFBFBF" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M44 83L24 83" stroke="#BFBFBF" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M44 87L28 92" stroke="#BFBFBF" stroke-width="2.6" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,9 @@
+.mood {
+  width: 100%;
+  margin: 0;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: rgba(87, 62, 37, 0.9);
+}

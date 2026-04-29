@@ -1,0 +1,14 @@
+:root {
+  --color-food: #ff8d3f;
+  --color-water: #4eb8ff;
+  --color-play: #58db8d;
+  --color-trust: #efc16b;
+  --color-ink: rgba(13, 26, 39, 0.9);
+  --color-glass-hi: rgba(255, 255, 255, 0.56);
+  --color-glass-mid: rgba(255, 255, 255, 0.18);
+  --color-glass-low: rgba(255, 255, 255, 0.06);
+  --color-ring: rgba(255, 255, 255, 0.42);
+  --trust-1: #e8d5c4;
+  --trust-3: #f0e8d8;
+  --trust-5: #fff8f0;
+}

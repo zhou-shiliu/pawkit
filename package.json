@@ -1,0 +1,60 @@
+{
+  "name": "pawkit",
+  "version": "1.0.0",
+  "description": "Pixel art desktop cat pet",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "vite --strictPort --port 5173",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "node --test scripts/test-roaming.js scripts/test-care-loop.js scripts/test-validation-metrics.js",
+    "electron:dev": "concurrently \"vite --strictPort --port 5173\" \"wait-on http://localhost:5173 && PAWKIT_VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "electron:build": "npm run build && electron-builder",
+    "download-sounds": "node scripts/download-sounds.js",
+    "verify:runtime": "node scripts/verify-packaged-runtime.js",
+    "verify:m1:manual": "node scripts/verify-m1-manual-qa.js",
+    "verify:m1-closure": "npm test && npm run build && npx tsc --noEmit --project tsconfig.json && npm run pack && npm run verify:runtime && npm run verify:m1:manual",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "keywords": ["desktop", "pet", "cat", "pixel-art"],
+  "author": "zenus",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/react": "^18.3.4",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^8.2.2",
+    "electron": "^29.0.0",
+    "electron-builder": "^24.0.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.10",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "electron-store": "^8.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "build": {
+    "appId": "com.zenus.pawkit",
+    "productName": "Pawkit",
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "icon": "assets/icon.icns"
+    },
+    "files": [
+      "src/**/*",
+      "dist/renderer/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/sounds",
+        "to": "sounds",
+        "filter": ["**/*"]
+      }
+    ]
+  }
+}

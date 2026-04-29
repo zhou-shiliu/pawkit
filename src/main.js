@@ -1,0 +1,789 @@
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const Store = require('electron-store').default;
+const {
+  DEFAULT_WINDOW_SIZE,
+  advanceRoamingState,
+  createInitialRoamingState,
+  toPersistedRoamingState,
+  ROAMING_TICK_MS,
+} = require('./shared/roaming');
+const {
+  CARE_TICK_MS,
+  advanceCareState,
+  applyFeedAction,
+  applyPetAction,
+  applyWaterAction,
+  createInitialCareState,
+  toPersistedCareState,
+} = require('./shared/careLoop');
+const {
+  getCareActionLabel,
+  getPrimaryCareNeedPresentation,
+} = require('./shared/carePresentation');
+const {
+  createEmptyValidationState,
+  normalizeValidationState,
+  getNeedKeyFromPresentation,
+  getNeedKeyFromState,
+  recordValidationSessionStart,
+  syncPrimaryCareNeed,
+  recordTrayMenuOpen,
+  recordCareAction,
+  createValidationArtifacts,
+} = require('./shared/validationMetrics');
+
+const store = new Store();
+const DEV_SERVER_URL = process.env.PAWKIT_VITE_DEV_SERVER_URL || process.env.VITE_DEV_SERVER_URL;
+const DEFAULT_SOUND_VOLUMES = Object.freeze({
+  master: 0.7,
+  ambient: 0.35,
+  meow: 0.75,
+  event: 0.8,
+  voice: 0.65,
+});
+const ROAMING_PERSIST_INTERVAL_MS = 350;
+const CARE_PERSIST_INTERVAL_MS = 500;
+const AUTOMATION_ACTION_DELAY_MS = 40;
+const ROAMING_EDGE_INSET = Object.freeze({
+  left: 72,
+  right: 28,
+  top: 12,
+  bottom: 28,
+});
+const SINGLE_INSTANCE_LOCK_PATH = path.join(app.getPath('temp'), 'pawkit-single-instance.lock');
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+let ownsProcessLock = false;
+
+if (!hasSingleInstanceLock || !acquireProcessLock()) {
+  app.quit();
+}
+
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function acquireProcessLock() {
+  try {
+    if (fs.existsSync(SINGLE_INSTANCE_LOCK_PATH)) {
+      const existingPid = Number(fs.readFileSync(SINGLE_INSTANCE_LOCK_PATH, 'utf8').trim());
+      if (isProcessAlive(existingPid)) {
+        return false;
+      }
+      fs.unlinkSync(SINGLE_INSTANCE_LOCK_PATH);
+    }
+
+    fs.writeFileSync(SINGLE_INSTANCE_LOCK_PATH, String(process.pid), { flag: 'wx' });
+    ownsProcessLock = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function releaseProcessLock() {
+  if (!ownsProcessLock) return;
+
+  try {
+    if (fs.existsSync(SINGLE_INSTANCE_LOCK_PATH)) {
+      const existingPid = Number(fs.readFileSync(SINGLE_INSTANCE_LOCK_PATH, 'utf8').trim());
+      if (existingPid === process.pid) {
+        fs.unlinkSync(SINGLE_INSTANCE_LOCK_PATH);
+      }
+    }
+  } catch {
+    // Best-effort cleanup only.
+  }
+}
+
+let mainWindow = null;
+let tray = null;
+let roamingRuntimeState = null;
+let roamingInterval = null;
+let lastRoamingPersistAt = 0;
+let careRuntimeState = null;
+let careInterval = null;
+let lastCarePersistAt = 0;
+let validationRuntimeState = null;
+
+function createFallbackTrayIcon() {
+  const svg = `
+    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+      <path fill="#000000" d="M5.4 1.8c-.9 0-1.6 1-1.6 2.3 0 1.2.6 2.2 1.5 2.2s1.6-1 1.6-2.2c0-1.3-.7-2.3-1.5-2.3Zm7.1 0c-.9 0-1.5 1-1.5 2.3 0 1.2.7 2.2 1.5 2.2.9 0 1.6-1 1.6-2.2 0-1.3-.7-2.3-1.6-2.3ZM2.7 5.7c-.8 0-1.4.9-1.4 2s.6 2 1.4 2c.8 0 1.4-.9 1.4-2s-.6-2-1.4-2Zm12.6 0c-.8 0-1.4.9-1.4 2s.6 2 1.4 2c.8 0 1.4-.9 1.4-2s-.6-2-1.4-2ZM9 6.2c-2.7 0-4.8 2.3-4.8 5 0 2 1.1 3.9 2.9 4.5.8.3 1.2-.2 1.9-.2s1.1.5 1.9.2c1.8-.6 2.9-2.5 2.9-4.5 0-2.7-2.1-5-4.8-5Z"/>
+    </svg>
+  `.trim();
+
+  const trayIcon = nativeImage
+    .createFromDataURL(`data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`)
+    .resize({ width: 18, height: 18 });
+
+  if (process.platform === 'darwin') {
+    trayIcon.setTemplateImage(true);
+  }
+
+  return trayIcon;
+}
+
+function clampVolume(value, fallback) {
+  const volume = Number(value);
+  if (!Number.isFinite(volume)) return fallback;
+  return Math.max(0, Math.min(1, volume));
+}
+
+function normalizeSoundVolumes(input = {}, base = DEFAULT_SOUND_VOLUMES) {
+  return {
+    master: clampVolume(input.master, base.master),
+    ambient: clampVolume(input.ambient, base.ambient),
+    meow: clampVolume(input.meow, base.meow),
+    event: clampVolume(input.event, base.event),
+    voice: clampVolume(input.voice, base.voice),
+  };
+}
+
+function getPrimaryRoamingArea() {
+  const display = screen.getPrimaryDisplay();
+  const top = display.workArea.y + ROAMING_EDGE_INSET.top;
+  const bottom = display.bounds.y + display.bounds.height - ROAMING_EDGE_INSET.bottom;
+  const left = display.bounds.x + ROAMING_EDGE_INSET.left;
+  const right = display.bounds.x + display.bounds.width - ROAMING_EDGE_INSET.right;
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(DEFAULT_WINDOW_SIZE.width, right - left),
+    height: Math.max(DEFAULT_WINDOW_SIZE.height, bottom - top),
+  };
+}
+
+function getPersistedRoamingState() {
+  return store.get('cat.roaming', null);
+}
+
+function getPersistedCareState() {
+  return {
+    hunger: store.get('cat.hunger', 50),
+    hydration: store.get('cat.hydration', 62),
+    happiness: store.get('cat.happiness', 50),
+    trustLevel: store.get('cat.trustLevel', 1),
+    lastUpdatedAt: store.get('cat.lastCareUpdatedAt', Date.now()),
+  };
+}
+
+function getCurrentCareSnapshot() {
+  const safeCareState = careRuntimeState ?? createInitialCareState({
+    persistedState: getPersistedCareState(),
+    now: Date.now(),
+  });
+
+  return {
+    name: store.get('cat.name', 'Whiskers'),
+    ...toPersistedCareState(safeCareState),
+    lastFed: store.get('cat.lastFed', null),
+    lastWatered: store.get('cat.lastWatered', null),
+    lastPet: store.get('cat.lastPet', null),
+  };
+}
+
+function describeGauge(value, labels) {
+  const numericValue = Number(value) || 0;
+  if (numericValue < 30) return labels.low;
+  if (numericValue < 60) return labels.medium;
+  return labels.high;
+}
+
+function describeTrust(value) {
+  const numericValue = Number(value) || 0;
+  if (numericValue < 2) return '还在观察';
+  if (numericValue < 3.5) return '开始熟悉';
+  if (numericValue < 4.5) return '比较亲近';
+  return '非常信任';
+}
+
+function getPersistedValidationState() {
+  return store.get('validation.state', null);
+}
+
+function ensureValidationState(now = Date.now()) {
+  if (!validationRuntimeState) {
+    const persistedState = getPersistedValidationState();
+    validationRuntimeState = persistedState
+      ? normalizeValidationState(persistedState, now)
+      : createEmptyValidationState({ now });
+  }
+
+  return validationRuntimeState;
+}
+
+function getValidationReportPaths() {
+  const directory = path.join(app.getPath('userData'), 'validation');
+  return {
+    directory,
+    markdown: path.join(directory, 'summary.md'),
+    json: path.join(directory, 'summary.json'),
+  };
+}
+
+function writeValidationArtifacts() {
+  const paths = getValidationReportPaths();
+  const safeState = ensureValidationState(Date.now());
+  const artifacts = createValidationArtifacts(safeState, { generatedAt: Date.now() });
+
+  try {
+    fs.mkdirSync(paths.directory, { recursive: true });
+    fs.writeFileSync(paths.json, artifacts.json);
+    fs.writeFileSync(paths.markdown, artifacts.markdown);
+  } catch (error) {
+    console.error('Failed to write validation artifacts:', error);
+  }
+
+  return paths;
+}
+
+function persistValidationState() {
+  if (!validationRuntimeState) return;
+  store.set('validation.state', validationRuntimeState);
+  writeValidationArtifacts();
+}
+
+function recordValidationSession() {
+  validationRuntimeState = recordValidationSessionStart(ensureValidationState(Date.now()), {
+    now: Date.now(),
+  });
+  persistValidationState();
+}
+
+function syncValidationNeedPresentation(presentation) {
+  const now = Date.now();
+  const currentState = ensureValidationState(now);
+  const currentKey = getNeedKeyFromState(currentState);
+  const nextKey = getNeedKeyFromPresentation(presentation);
+
+  if (currentKey === nextKey) return;
+
+  validationRuntimeState = syncPrimaryCareNeed(currentState, presentation, { now });
+  persistValidationState();
+}
+
+function recordValidationTrayOpen() {
+  validationRuntimeState = recordTrayMenuOpen(ensureValidationState(Date.now()), {
+    now: Date.now(),
+  });
+  persistValidationState();
+}
+
+function recordValidationCareAction(action, source) {
+  validationRuntimeState = recordCareAction(ensureValidationState(Date.now()), {
+    action,
+    source,
+    now: Date.now(),
+  });
+  persistValidationState();
+}
+
+async function openValidationReport() {
+  const paths = writeValidationArtifacts();
+  const result = await shell.openPath(paths.markdown);
+  if (result) {
+    console.error('Failed to open validation report:', result);
+  }
+}
+
+function sendCareStateUpdate() {
+  if (!mainWindow || mainWindow.isDestroyed() || !careRuntimeState) return;
+  mainWindow.webContents.send('cat-state-updated', getCurrentCareSnapshot());
+}
+
+function rebuildTrayMenu() {
+  if (!tray) return;
+
+  const safeCareState = careRuntimeState ?? createInitialCareState({ now: Date.now() });
+  const primaryNeed = getPrimaryCareNeedPresentation(safeCareState);
+  const recommendedAction = primaryNeed?.action ?? null;
+  syncValidationNeedPresentation(primaryNeed);
+  const careSummary = primaryNeed
+    ? `当前需要：${primaryNeed.menuSummary}`
+    : '当前状态：稳定，可以随时照料它';
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: careSummary, enabled: false },
+    { type: 'separator' },
+    { label: getCareActionLabel('feed', recommendedAction), click: () => applyCareAction('feed', { source: 'tray' }) },
+    { label: getCareActionLabel('water', recommendedAction), click: () => applyCareAction('water', { source: 'tray' }) },
+    { label: getCareActionLabel('pet', recommendedAction), click: () => applyCareAction('pet', { source: 'tray' }) },
+    { type: 'separator' },
+    {
+      label: `食物状态：${describeGauge(safeCareState.hunger, { low: '偏低', medium: '正常', high: '充足' })}`,
+      enabled: false,
+    },
+    {
+      label: `饮水状态：${describeGauge(safeCareState.hydration, { low: '偏低', medium: '正常', high: '充足' })}`,
+      enabled: false,
+    },
+    {
+      label: `心情状态：${describeGauge(safeCareState.happiness, { low: '想玩', medium: '平稳', high: '放松' })}`,
+      enabled: false,
+    },
+    { label: `信任状态：${describeTrust(safeCareState.trustLevel)}`, enabled: false },
+    { type: 'separator' },
+    { label: '打开验证报告', click: () => void openValidationReport() },
+    { type: 'separator' },
+    { label: '显示 Pawkit', click: () => mainWindow?.showInactive() },
+    { label: '隐藏窗口', click: () => mainWindow?.hide() },
+    { label: '退出', click: () => app.quit() },
+  ]);
+
+  tray.setToolTip(primaryNeed ? `Pawkit · ${primaryNeed.menuSummary}` : 'Pawkit · 状态稳定');
+  if (process.platform === 'darwin') {
+    tray.setTitle(primaryNeed?.trayTitle ?? 'Pawkit');
+  }
+  tray.setContextMenu(contextMenu);
+}
+
+function persistCareState(force = false) {
+  if (!careRuntimeState) return;
+
+  const now = Date.now();
+  if (!force && now - lastCarePersistAt < CARE_PERSIST_INTERVAL_MS) {
+    return;
+  }
+
+  const persisted = toPersistedCareState(careRuntimeState, now);
+  store.set('cat.hunger', persisted.hunger);
+  store.set('cat.hydration', persisted.hydration);
+  store.set('cat.happiness', persisted.happiness);
+  store.set('cat.trustLevel', persisted.trustLevel);
+  store.set('cat.lastCareUpdatedAt', persisted.lastUpdatedAt);
+  lastCarePersistAt = now;
+}
+
+function stopCareLoop() {
+  if (careInterval) {
+    clearInterval(careInterval);
+    careInterval = null;
+  }
+}
+
+function startCareLoop() {
+  stopCareLoop();
+
+  careInterval = setInterval(() => {
+    if (!careRuntimeState) return;
+
+    careRuntimeState = advanceCareState(careRuntimeState, { now: Date.now() });
+    persistCareState();
+    sendCareStateUpdate();
+    rebuildTrayMenu();
+  }, CARE_TICK_MS);
+}
+
+function applyCareAction(actionType, { source = 'unknown' } = {}) {
+  const now = Date.now();
+
+  if (!careRuntimeState) {
+    careRuntimeState = createInitialCareState({
+      persistedState: getPersistedCareState(),
+      now,
+    });
+  }
+
+  if (actionType === 'feed') {
+    careRuntimeState = applyFeedAction(careRuntimeState, { now });
+    store.set('cat.lastFed', now);
+  } else if (actionType === 'water') {
+    careRuntimeState = applyWaterAction(careRuntimeState, { now });
+    store.set('cat.lastWatered', now);
+  } else if (actionType === 'pet') {
+    careRuntimeState = applyPetAction(careRuntimeState, { now });
+    store.set('cat.lastPet', now);
+  }
+
+  recordValidationCareAction(actionType, source);
+  persistCareState(true);
+  sendCareStateUpdate();
+  rebuildTrayMenu();
+}
+
+
+function maybeWriteAutomationRendererStatusSnapshot() {
+  const statusFile = String(process.env.PAWKIT_AUTOMATION_RENDERER_STATUS_FILE || '').trim();
+  if (!statusFile || !mainWindow || mainWindow.isDestroyed()) return;
+
+  setTimeout(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    mainWindow.webContents
+      .executeJavaScript(
+        `(() => {
+          const panel = document.querySelector('[aria-label="care-status"]');
+          const rect = panel ? panel.getBoundingClientRect() : null;
+          const style = panel ? window.getComputedStyle(panel) : null;
+          return {
+            text: panel?.textContent?.replace(/\\s+/g, ' ').trim() ?? '',
+            visible: Boolean(
+              panel &&
+              rect &&
+              rect.width > 0 &&
+              rect.height > 0 &&
+              style &&
+              style.display !== 'none' &&
+              style.visibility !== 'hidden' &&
+              Number(style.opacity || 1) > 0
+            ),
+            rect: rect
+              ? {
+                  x: Math.round(rect.x),
+                  y: Math.round(rect.y),
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                }
+              : null,
+          };
+        })()`,
+        true,
+      )
+      .then((snapshot) => {
+        fs.writeFileSync(
+          statusFile,
+          JSON.stringify(
+            {
+              capturedAt: new Date().toISOString(),
+              ...snapshot,
+            },
+            null,
+            2,
+          ),
+        );
+      })
+      .catch((error) => {
+        console.error('Failed to capture renderer status snapshot:', error);
+      });
+  }, 450);
+}
+
+function maybeRunAutomationCareActions() {
+  const rawActions = String(process.env.PAWKIT_AUTOMATION_ACTIONS || '').trim();
+  if (!rawActions) return;
+
+  const actions = rawActions
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value === 'feed' || value === 'water' || value === 'pet');
+
+  if (actions.length === 0) return;
+
+  const statusFile = String(process.env.PAWKIT_AUTOMATION_STATUS_FILE || '').trim();
+  const before = getCurrentCareSnapshot();
+
+  actions.forEach((action, index) => {
+    setTimeout(() => {
+      applyCareAction(action, { source: 'automation' });
+
+      if (index !== actions.length - 1 || !statusFile) return;
+
+      const payload = {
+        executedAt: new Date().toISOString(),
+        actions,
+        before,
+        after: getCurrentCareSnapshot(),
+      };
+
+      try {
+        fs.writeFileSync(statusFile, JSON.stringify(payload, null, 2));
+      } catch (error) {
+        console.error('Failed to write automation care status file:', error);
+      }
+    }, AUTOMATION_ACTION_DELAY_MS * (index + 1));
+  });
+}
+
+function persistRoamingState(force = false) {
+  if (!roamingRuntimeState) return;
+
+  const now = Date.now();
+  if (!force && now - lastRoamingPersistAt < ROAMING_PERSIST_INTERVAL_MS) {
+    return;
+  }
+
+  store.set('cat.roaming', toPersistedRoamingState(roamingRuntimeState));
+  lastRoamingPersistAt = now;
+}
+
+function sendRoamingStateUpdate() {
+  if (!mainWindow || mainWindow.isDestroyed() || !roamingRuntimeState) return;
+  mainWindow.webContents.send('roaming-state-updated', toPersistedRoamingState(roamingRuntimeState));
+}
+
+function syncWindowToRoamingState() {
+  if (!mainWindow || mainWindow.isDestroyed() || !roamingRuntimeState) return;
+
+  mainWindow.setBounds(
+    {
+      x: Math.round(roamingRuntimeState.x),
+      y: Math.round(roamingRuntimeState.y),
+      width: DEFAULT_WINDOW_SIZE.width,
+      height: DEFAULT_WINDOW_SIZE.height,
+    },
+    false,
+  );
+}
+
+function stopRoamingLoop() {
+  if (roamingInterval) {
+    clearInterval(roamingInterval);
+    roamingInterval = null;
+  }
+}
+
+function startRoamingLoop() {
+  stopRoamingLoop();
+
+  roamingInterval = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed() || !roamingRuntimeState) return;
+
+    roamingRuntimeState = advanceRoamingState(roamingRuntimeState, {
+      workArea: getPrimaryRoamingArea(),
+      now: Date.now(),
+      rng: Math.random,
+    });
+
+    syncWindowToRoamingState();
+    persistRoamingState();
+    sendRoamingStateUpdate();
+  }, ROAMING_TICK_MS);
+}
+
+const createWindow = () => {
+  const now = Date.now();
+  const workArea = getPrimaryRoamingArea();
+
+  roamingRuntimeState = createInitialRoamingState({
+    workArea,
+    persistedState: getPersistedRoamingState(),
+    now,
+    rng: Math.random,
+  });
+  careRuntimeState = createInitialCareState({
+    persistedState: getPersistedCareState(),
+    now,
+  });
+  persistCareState(true);
+
+  mainWindow = new BrowserWindow({
+    width: DEFAULT_WINDOW_SIZE.width,
+    height: DEFAULT_WINDOW_SIZE.height,
+    x: Math.round(roamingRuntimeState.x),
+    y: Math.round(roamingRuntimeState.y),
+    frame: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: false,
+    show: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  if (DEV_SERVER_URL) {
+    mainWindow.loadURL(DEV_SERVER_URL).catch((error) => {
+      console.error('Failed to load dev server URL:', error);
+    });
+  } else {
+    const distPath = path.join(__dirname, '..', 'dist', 'renderer', 'index.html');
+    const rendererPath = fs.existsSync(distPath) ? distPath : null;
+
+    if (!rendererPath) {
+      throw new Error(`Missing renderer build output at ${distPath}. Run "npm run build" before packaging or local production launch.`);
+    }
+
+    mainWindow.loadFile(rendererPath).catch((error) => {
+      console.error('Failed to load renderer build output:', error);
+    });
+  }
+
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.showInactive();
+    sendRoamingStateUpdate();
+    sendCareStateUpdate();
+    maybeWriteAutomationRendererStatusSnapshot();
+  });
+
+  startRoamingLoop();
+  startCareLoop();
+};
+
+const createTray = () => {
+  const iconPath = path.join(__dirname, '..', 'assets', 'tray-icon.png');
+  let trayIcon;
+  try {
+    trayIcon = nativeImage.createFromPath(iconPath);
+    if (trayIcon.isEmpty()) {
+      trayIcon = createFallbackTrayIcon();
+    }
+  } catch {
+    trayIcon = createFallbackTrayIcon();
+  }
+
+  if (process.platform === 'darwin') {
+    trayIcon.setTemplateImage(true);
+  }
+
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Pawkit');
+  rebuildTrayMenu();
+  tray.on('click', () => {
+    recordValidationTrayOpen();
+    rebuildTrayMenu();
+    tray?.popUpContextMenu();
+  });
+  tray.on('right-click', () => {
+    recordValidationTrayOpen();
+    rebuildTrayMenu();
+    tray?.popUpContextMenu();
+  });
+  tray.on('double-click', () => mainWindow?.showInactive());
+};
+
+app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return;
+  recordValidationSession();
+  createWindow();
+  createTray();
+  maybeRunAutomationCareActions();
+});
+
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.showInactive();
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+app.on('before-quit', () => {
+  persistRoamingState(true);
+  persistCareState(true);
+  persistValidationState();
+  stopRoamingLoop();
+  stopCareLoop();
+  releaseProcessLock();
+});
+
+// IPC: get cat state
+ipcMain.handle('get-cat-state', () => {
+  if (!careRuntimeState) {
+    careRuntimeState = createInitialCareState({
+      persistedState: getPersistedCareState(),
+      now: Date.now(),
+    });
+  } else {
+    careRuntimeState = advanceCareState(careRuntimeState, { now: Date.now() });
+  }
+
+  persistCareState();
+  sendCareStateUpdate();
+  rebuildTrayMenu();
+
+  return {
+    name: store.get('cat.name', 'Whiskers'),
+    ...toPersistedCareState(careRuntimeState),
+    lastFed: store.get('cat.lastFed', null),
+    lastWatered: store.get('cat.lastWatered', null),
+    lastPet: store.get('cat.lastPet', null),
+  };
+});
+
+ipcMain.handle('get-roaming-state', () => {
+  if (!roamingRuntimeState) {
+    roamingRuntimeState = createInitialRoamingState({
+      workArea: getPrimaryRoamingArea(),
+      persistedState: getPersistedRoamingState(),
+      now: Date.now(),
+      rng: Math.random,
+    });
+  }
+
+  return toPersistedRoamingState(roamingRuntimeState);
+});
+
+// IPC: feed cat
+ipcMain.handle('feed-cat', () => {
+  applyCareAction('feed', { source: 'ipc' });
+  return {
+    hunger: careRuntimeState?.hunger ?? store.get('cat.hunger', 50),
+    lastFed: store.get('cat.lastFed', null),
+  };
+});
+
+// IPC: give water
+ipcMain.handle('water-cat', () => {
+  applyCareAction('water', { source: 'ipc' });
+  return {
+    hydration: careRuntimeState?.hydration ?? store.get('cat.hydration', 62),
+    lastWatered: store.get('cat.lastWatered', null),
+  };
+});
+
+// IPC: pet cat
+ipcMain.handle('pet-cat', () => {
+  applyCareAction('pet', { source: 'ipc' });
+  return {
+    happiness: careRuntimeState?.happiness ?? store.get('cat.happiness', 50),
+    trustLevel: careRuntimeState?.trustLevel ?? store.get('cat.trustLevel', 1),
+    lastPet: store.get('cat.lastPet', null),
+  };
+});
+
+// IPC: drag window
+ipcMain.on('drag-start', () => {
+  // Handled via -webkit-app-region in CSS
+});
+
+// IPC: hide window
+ipcMain.on('hide-window', () => {
+  mainWindow?.hide();
+});
+
+ipcMain.handle('get-sound-settings', () => {
+  const volumes = normalizeSoundVolumes(store.get('sound.volumes', DEFAULT_SOUND_VOLUMES));
+  return { volumes };
+});
+
+ipcMain.handle('set-sound-volume', (_event, nextVolumes = {}) => {
+  const currentVolumes = normalizeSoundVolumes(store.get('sound.volumes', DEFAULT_SOUND_VOLUMES));
+  const mergedVolumes = normalizeSoundVolumes({ ...currentVolumes, ...nextVolumes }, currentVolumes);
+  store.set('sound.volumes', mergedVolumes);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('sound-volume-updated', mergedVolumes);
+  }
+
+  return mergedVolumes;
+});
+
+ipcMain.handle('play-sound', (_event, payload = {}) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('play-sound', payload);
+  }
+  return { ok: true };
+});

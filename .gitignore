@@ -1,0 +1,4 @@
+.omx/
+.codex/
+dist/
+node_modules/
