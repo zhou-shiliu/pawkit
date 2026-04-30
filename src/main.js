@@ -630,6 +630,8 @@ function applyCareAction(actionType, { source = 'unknown' } = {}) {
 function getAutomationRendererSnapshotScript() {
   return `(() => {
     const root = document.querySelector('[data-presence-mode]');
+    const visualStateTarget = document.querySelector('[data-visual-state]');
+    const catPoseTarget = document.querySelector('[data-cat-pose]');
     const panel = document.querySelector('[aria-label="care-status"]');
     const hud = document.querySelector('[aria-label="care-hud"]');
     const toSnapshot = (element) => {
@@ -661,6 +663,8 @@ function getAutomationRendererSnapshotScript() {
     const careStatus = toSnapshot(panel);
     return {
       presenceMode: root?.getAttribute('data-presence-mode') ?? null,
+      visualState: visualStateTarget?.getAttribute('data-visual-state') ?? null,
+      catPose: catPoseTarget?.getAttribute('data-cat-pose') ?? null,
       text: careStatus.text,
       visible: careStatus.visible,
       rect: careStatus.rect,
