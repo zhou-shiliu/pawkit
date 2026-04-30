@@ -35,6 +35,16 @@ function getActionFeedback(action: 'feed' | 'water' | 'pet') {
   return '玩得很开心';
 }
 
+function getVisualPose(
+  presenceMode: 'work' | 'idle',
+  roamingPhase: 'spawn' | 'move' | 'pause' | 'turn',
+  animState: ReturnType<typeof useCatState>['catState']['animState'],
+) {
+  if (animState !== 'idle') return 'work';
+  if (presenceMode === 'work') return 'work';
+  return roamingPhase;
+}
+
 export default function App() {
   const roamingState = useRoamingCatState();
   const { catState } = useCatState();
@@ -54,6 +64,7 @@ export default function App() {
   const bubbleMessage =
     feedbackMessage ??
     (shouldShowCarePromptInMode(presenceState.mode, catState) ? carePrompt : null);
+  const visualPose = getVisualPose(presenceState.mode, roamingState.phase, catState.animState);
   const careStatusItems = [
     { label: 'Food', value: formatGauge(catState.hunger) },
     { label: 'Water', value: formatGauge(catState.hydration) },
@@ -132,7 +143,12 @@ export default function App() {
             }`}
           />
           <div className={styles.catBody}>
-            <StaticCatFigure facing={roamingState.facing} trustLevel={catState.trustLevel} />
+            <StaticCatFigure
+              facing={roamingState.facing}
+              trustLevel={catState.trustLevel}
+              pose={visualPose}
+              presenceMode={presenceState.mode}
+            />
           </div>
         </div>
       </div>
