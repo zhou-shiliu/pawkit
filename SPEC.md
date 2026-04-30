@@ -2,9 +2,9 @@
 
 ## 当前目标
 
-当前仓库已经完成 **M1：桌面存在感 + 最小照料闭环**，并进入 **M2：双模式存在感**。
+当前仓库已经完成 **M1：桌面存在感 + 最小照料闭环** 与 **M2：双模式存在感**。
 
-M2 的目标是：用户活跃工作时猫咪贴边陪伴、降低打扰；用户闲置达到阈值后恢复 M1 自由漫游。
+当前分支的新增目标是 **M3：鲜活感升级 / Lifelike Presence Upgrade**：在 work / idle 边界不回退的前提下，引入有限多姿态与更像猫的状态切换，让用户愿意整天开着观察。
 
 ## 当前结构
 
@@ -19,10 +19,12 @@ src/
 │   └── validationMetrics.js 本地验证指标汇总
 └── renderer/
     ├── App.tsx             桌面 UI，按 presence mode 控制提示与微动
-    ├── hooks/
+    ├── hooks/              当前已包含 presence / roaming / care hydration；M3 计划在此层新增 visual presence 状态所有者
     ├── systems/
     └── components/
 ```
+
+> 注：M3 计划中的 `visualPresence` 相关 shared / hook / pose 资源仍在实现中；在对应文件真正落地前，不应把它们记为已完成能力。
 
 ## 当前能力
 
@@ -51,6 +53,13 @@ src/
 - 工作态提示过滤：非紧急照料提示被抑制，紧急提示保留；闲置态沿用 M1 提示行为。
 - 自动化支持：`PAWKIT_AUTOMATION_IDLE_SECONDS`、`PAWKIT_AUTOMATION_IDLE_SEQUENCE_FILE`、`PAWKIT_AUTOMATION_PRESENCE_OVERRIDE`、`PAWKIT_AUTOMATION_IDLE_THRESHOLD_SECONDS`、`PAWKIT_AUTOMATION_CARE_STATE`。
 
+### M3：鲜活感升级（当前分支目标）
+
+- 目标不是增加更多功能，而是让桌面猫看起来更像“活着的猫”。
+- 计划新增有限姿态资源、renderer 侧 visual state 规范化、以及 work / idle 差异化状态集合。
+- M3 必须新增独立验证门禁 `verify:m3:livelike`，同时继续通过 `verify:m2:presence` 与 `verify:m1-closure`。
+- 在该门禁与实现真正落地前，仓库当前可运行结论仍以 M2 为准。
+
 ## 当前限制
 
 - 桌面窗口仍默认 click-through，交互入口主要是托盘。
@@ -60,6 +69,8 @@ src/
 
 ## 验证门禁
 
+当前已落地门禁：
+
 ```bash
 npm test
 npm run build
@@ -68,6 +79,12 @@ npm run verify:m2:presence
 npm run verify:m1-closure
 ```
 
+M3 目标门禁（待实现完成后纳入）：
+
+```bash
+npm run verify:m3:livelike
+```
+
 ## 当前结论
 
-当前仓库已经不是“纯漫游 M1”，而是“M1 基线 + M2 双模式存在感”。后续阶段应优先根据本地验证报告和手工 QA 调整陪伴感，而不是提前扩大到完整数字宠物系统。
+当前仓库已经不是“纯漫游 M1”，而是 **M1 基线 + M2 双模式存在感**，并正在朝 **M3 鲜活感升级** 推进。当前应先完成可复验的姿态/视觉状态门禁，再决定是否继续扩展更多体验层。
