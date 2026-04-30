@@ -27,6 +27,28 @@
   filter: blur(6px);
 }
 
+.poseGlow {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  width: 112px;
+  height: 44px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--trust-halo) 72%, rgba(255, 255, 255, 0.1)) 0%,
+    rgba(255, 213, 150, 0.12) 52%,
+    rgba(255, 213, 150, 0) 100%
+  );
+  filter: blur(10px);
+  opacity: 0.82;
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease,
+    filter 200ms ease;
+}
+
 .cat {
   position: relative;
   z-index: 2;
@@ -40,4 +62,35 @@
 
 .right {
   transform: scaleX(-1);
+}
+
+.figure[data-pose='spawn'] .poseGlow {
+  opacity: 0.72;
+  transform: translateX(-50%) scale(0.94);
+}
+
+.figure[data-pose='turn'] .cat {
+  transform: scaleX(1) translateY(-1px) rotate(2deg);
+}
+
+.figure[data-pose='move'] .cat {
+  transform: translateY(-2px) scale(1.01);
+}
+
+.figure[data-pose='move'] .poseGlow {
+  opacity: 0.64;
+  filter: blur(12px);
+}
+
+.figure[data-pose='work'] .cat {
+  transform: translateY(-1px) scale(0.995);
+}
+
+.figure[data-pose='work'] .poseGlow {
+  opacity: 0.86;
+  transform: translateX(-50%) scale(1.04);
+}
+
+.figure[data-presence-mode='work'] .poseGlow {
+  opacity: 0.92;
 }
