@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   advanceVisualPresenceState,
   createVisualPresenceState,
-  type VisualPresenceState,
-} from '../../shared/visualPresence';
+} from '../systems/visualPresence';
+import type { VisualPresenceState } from '../../shared/visualPresence';
 import type { PresenceStatePayload, RoamingStatePayload } from '../types/electron';
 
 interface UseVisualPresenceStateInput {
@@ -30,12 +30,16 @@ export function useVisualPresenceState({
   );
 
   useEffect(() => {
-    setVisualState((previous) => advanceVisualPresenceState(previous, context, { now: Date.now() }));
+    setVisualState((previous) =>
+      advanceVisualPresenceState(previous, context, { now: Date.now() }),
+    );
   }, [context]);
 
   useEffect(() => {
     const timerId = window.setInterval(() => {
-      setVisualState((previous) => advanceVisualPresenceState(previous, context, { now: Date.now() }));
+      setVisualState((previous) =>
+        advanceVisualPresenceState(previous, context, { now: Date.now() }),
+      );
     }, VISUAL_TICK_MS);
 
     return () => {

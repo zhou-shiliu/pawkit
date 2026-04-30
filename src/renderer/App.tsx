@@ -102,7 +102,6 @@ export default function App() {
   const bubbleMessage =
     feedbackMessage ??
     (shouldShowCarePromptInMode(presenceState.mode, catState) ? carePrompt : null);
-  const visualPose = getVisualPose(presenceState.mode, roamingState.phase, catState.animState);
   const careStatusItems = [
     { label: 'Food', value: formatGauge(catState.hunger) },
     { label: 'Water', value: formatGauge(catState.hydration) },
