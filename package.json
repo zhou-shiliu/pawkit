@@ -8,7 +8,7 @@
     "dev": "vite --strictPort --port 5173",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test scripts/test-roaming.js scripts/test-care-loop.js scripts/test-validation-metrics.js scripts/test-presence-mode.js",
+    "test": "node --test scripts/test-roaming.js scripts/test-care-loop.js scripts/test-validation-metrics.js scripts/test-presence-mode.js scripts/test-visual-presence-mode.js",
     "electron:dev": "concurrently \"vite --strictPort --port 5173\" \"wait-on http://localhost:5173 && PAWKIT_VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "electron:build": "npm run build && electron-builder",
     "download-sounds": "node scripts/download-sounds.js",
@@ -17,9 +17,15 @@
     "verify:m2:presence": "node scripts/verify-m2-presence.js",
     "verify:m1-closure": "npm test && npm run build && npx tsc --noEmit --project tsconfig.json && npm run pack && npm run verify:runtime && npm run verify:m1:manual",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "verify:m3:livelike": "node scripts/verify-m3-lifelike-presence.js"
   },
-  "keywords": ["desktop", "pet", "cat", "pixel-art"],
+  "keywords": [
+    "desktop",
+    "pet",
+    "cat",
+    "pixel-art"
+  ],
   "author": "zenus",
   "license": "MIT",
   "devDependencies": {
@@ -54,7 +60,9 @@
       {
         "from": "assets/sounds",
         "to": "sounds",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }
