@@ -1,14 +1,14 @@
 # M2 双模式存在感自动化验收报告
 
-- 生成时间：2026-04-29T10:32:07.806Z
+- 生成时间：2026-04-30T01:24:27.252Z
 - 自动化结果：**通过**
 
 ## 验收项结果
 
 - **defaultWorkMode**：通过 — mode=work, threshold=600, docked=true, renderer=work
 - **workModeStopsRoaming**：通过 — uniqueRoamingPositions=1
-- **idleRestoresRoaming**：通过 — mode=idle, positions=15, phases=[spawn, pause, turn, move]
-- **liveIdleToWork**：通过 — sequence=idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>work>work>work>work>work>work>work>work>work>work>work, idlePositions=8, finalDocked=true
+- **idleRestoresRoaming**：通过 — mode=idle, positions=18, phases=[spawn, pause, turn, move]
+- **liveIdleToWork**：通过 — sequence=idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>idle>work>work>work>work>work>work>work>work>work>work>work, idlePositions=7, finalDocked=true
 - **thresholdPersistence**：通过 — runtime=1800, store=1800
 - **manualOverride**：通过 — forcedWork=work/work, forcedIdle=idle/idle
 - **workPromptFiltering**：通过 — workGentleHud=false, workUrgentHud=true, idleGentleHud=true
@@ -20,31 +20,31 @@
   "defaultWork": {
     "sampleCount": 17,
     "latest": {
-      "at": "2026-04-29T10:32:11.959Z",
+      "at": "2026-04-30T01:24:32.897Z",
       "presence": {
         "mode": "work",
         "idleThresholdSeconds": 600,
         "systemIdleSeconds": 0,
         "idleState": "active",
         "manualOverride": "auto",
-        "lastModeChangedAt": 1777458727977,
-        "lastUpdatedAt": 1777458731074,
+        "lastModeChangedAt": 1777512268600,
+        "lastUpdatedAt": 1777512272705,
         "dock": {
           "x": 1724,
           "y": 709,
           "facing": "left",
           "locomotion": "idle",
           "phase": "pause",
-          "lastUpdatedAt": 1777458731959
+          "lastUpdatedAt": 1777512272897
         }
       },
       "roaming": {
-        "x": 1064,
-        "y": 537,
+        "x": 1127,
+        "y": 604,
         "facing": "right",
         "locomotion": "idle",
         "phase": "spawn",
-        "lastUpdatedAt": 1777458727977
+        "lastUpdatedAt": 1777512268600
       },
       "windowBounds": {
         "x": 1724,
@@ -84,7 +84,7 @@
   },
   "idleRoaming": {
     "sampleCount": 28,
-    "uniquePositions": 15,
+    "uniquePositions": 18,
     "phases": [
       "spawn",
       "pause",
@@ -92,35 +92,35 @@
       "move"
     ],
     "latest": {
-      "at": "2026-04-29T10:32:18.881Z",
+      "at": "2026-04-30T01:24:39.957Z",
       "presence": {
         "mode": "idle",
         "idleThresholdSeconds": 600,
         "systemIdleSeconds": 600,
         "idleState": "idle",
         "manualOverride": "auto",
-        "lastModeChangedAt": 1777458732444,
-        "lastUpdatedAt": 1777458738570,
+        "lastModeChangedAt": 1777512273564,
+        "lastUpdatedAt": 1777512279671,
         "dock": {
           "x": 1724,
           "y": 709,
           "facing": "left",
           "locomotion": "idle",
           "phase": "pause",
-          "lastUpdatedAt": 1777458738881
+          "lastUpdatedAt": 1777512279957
         }
       },
       "roaming": {
-        "x": 971,
-        "y": 342,
+        "x": 1016,
+        "y": 466,
         "facing": "left",
-        "locomotion": "idle",
-        "phase": "turn",
-        "lastUpdatedAt": 1777458738811
+        "locomotion": "walk",
+        "phase": "move",
+        "lastUpdatedAt": 1777512279924
       },
       "windowBounds": {
-        "x": 971,
-        "y": 342,
+        "x": 1016,
+        "y": 466,
         "width": 160,
         "height": 160
       },
@@ -185,33 +185,33 @@
       "work",
       "work"
     ],
-    "idleUniquePositions": 8,
+    "idleUniquePositions": 7,
     "final": {
-      "at": "2026-04-29T10:32:25.935Z",
+      "at": "2026-04-30T01:24:46.970Z",
       "presence": {
         "mode": "work",
         "idleThresholdSeconds": 600,
         "systemIdleSeconds": 0,
         "idleState": "active",
         "manualOverride": "auto",
-        "lastModeChangedAt": 1777458743580,
-        "lastUpdatedAt": 1777458745603,
+        "lastModeChangedAt": 1777512284682,
+        "lastUpdatedAt": 1777512286699,
         "dock": {
           "x": 1724,
           "y": 709,
           "facing": "left",
           "locomotion": "idle",
           "phase": "pause",
-          "lastUpdatedAt": 1777458745935
+          "lastUpdatedAt": 1777512286970
         }
       },
       "roaming": {
-        "x": 1080,
-        "y": 588,
+        "x": 1194,
+        "y": 571,
         "facing": "left",
         "locomotion": "walk",
         "phase": "move",
-        "lastUpdatedAt": 1777458743466
+        "lastUpdatedAt": 1777512284618
       },
       "windowBounds": {
         "x": 1724,
@@ -251,11 +251,11 @@
   "thresholdStore": {
     "idleThresholdSeconds": 1800,
     "manualOverride": "auto",
-    "lastModeChangedAt": 1777458746489
+    "lastModeChangedAt": 1777512287537
   },
   "promptFiltering": {
     "workGentle": {
-      "capturedAt": "2026-04-29T10:32:40.574Z",
+      "capturedAt": "2026-04-30T01:25:01.634Z",
       "presenceMode": "work",
       "text": "Food28Water62Play50Trust1.0",
       "visible": true,
@@ -282,7 +282,7 @@
       }
     },
     "workUrgent": {
-      "capturedAt": "2026-04-29T10:32:41.675Z",
+      "capturedAt": "2026-04-30T01:25:02.777Z",
       "presenceMode": "work",
       "text": "Food18Water62Play50Trust1.0",
       "visible": true,
@@ -314,7 +314,7 @@
       }
     },
     "idleGentle": {
-      "capturedAt": "2026-04-29T10:32:42.830Z",
+      "capturedAt": "2026-04-30T01:25:03.821Z",
       "presenceMode": "idle",
       "text": "Food28Water62Play50Trust1.0",
       "visible": true,
