@@ -7,19 +7,9 @@ const { createDefaultPlacement, resolvePlacementForDisplays } = require('../src/
 
 const manifest = createNormalizedPetManifest({
   id: 'verify-pet',
-  name: 'Verify Pet',
-  sprite: {
-    src: 'spritesheet.webp',
-    frameWidth: 192,
-    frameHeight: 208,
-  },
-  animations: {
-    Idle: { row: 0, frames: 8, fps: 8, loop: true },
-    waiting: { row: 1, frames: 8, fps: 8, loop: true },
-    wave: { row: 2, frames: 8, fps: 10, loop: false },
-    jump: { row: 3, frames: 8, fps: 10, loop: false },
-    run: { row: 4, frames: 8, fps: 12, loop: true },
-  },
+  displayName: 'Verify Pet',
+  description: 'Minimal Codex pet package contract.',
+  spritesheetPath: 'spritesheet.webp',
 });
 
 const initial = createPetBehaviorState({ now: 1000 });
@@ -33,8 +23,8 @@ const restored = resolvePlacementForDisplays(
 );
 
 assert.equal(attention.semanticState, PET_SEMANTIC_STATE.ATTENTION);
-assert.equal(attentionAnimation.animationName, 'wave');
-assert.equal(leftMovement.animationName, 'run');
+assert.equal(attentionAnimation.animationName, 'waving');
+assert.equal(leftMovement.animationName, 'running-left');
 assert.ok(placement.bounds.x >= 0);
 assert.ok(placement.bounds.y >= 0);
 assert.ok(restored.bounds.x <= 1280 - 192);
@@ -48,4 +38,3 @@ console.log(JSON.stringify({
   defaultPlacement: placement.bounds,
   restoredPlacement: restored.bounds,
 }, null, 2));
-

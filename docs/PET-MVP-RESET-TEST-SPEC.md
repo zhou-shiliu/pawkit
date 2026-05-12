@@ -55,18 +55,19 @@ scripts/test-pet-package.js
 - `run left`、`runLeft`、`Run Left` 都能规范化为同一动作。
 - `Idle` 与 `idle` 可以统一解析。
 - 原始 manifest 被转换为 normalized manifest。
+- 只有 `id / displayName / description / spritesheetPath` 的 Codex Pet manifest 会补齐固定 atlas 动画行。
 - adapter 不把原始格式差异泄漏给 renderer。
 
 ### C. 动作 fallback
 
 断言：
 
-- `idle` 语义优先使用 `Idle`，缺失时使用 `waiting`。
-- `working` 语义优先使用 `waiting`，缺失时使用 `Idle`。
-- `attention` 语义优先使用 `wave`，缺失时使用 `jump`。
-- `success` 语义优先使用 `jump`，再 fallback 到 `review`、`wave`。
-- `failed` 语义优先使用 `failed`，缺失时使用 `Idle`。
-- `movingLeft` 优先使用 `run left`，缺失时使用 `run`。
+- `idle` 语义优先使用 `idle`，缺失时使用 `waiting`。
+- `working` 语义优先使用 `waiting`，再 fallback 到 `running`、`idle`。
+- `attention` 语义优先使用 `waving`，缺失时使用 `jumping`。
+- `success` 语义优先使用 `jumping`，再 fallback 到 `review`、`waving`。
+- `failed` 语义优先使用 `failed`，缺失时使用 `idle`。
+- `movingLeft` 优先使用 `running-left`，再 fallback 到 `running-right`、`running`。
 - 所有语义最终至少能 fallback 到一个可播放动作或明确错误状态。
 
 ### D. Behavior Controller
@@ -98,7 +99,7 @@ scripts/test-pet-package.js
 
 - 模拟点击宠物后，运行时收到 `petClicked`。
 - 语义状态短暂进入 `attention`。
-- 动画解析为 `wave`、`jump` 或 fallback 动作。
+- 动画解析为 `waving`、`jumping` 或 fallback 动作。
 - 一次性动作结束后返回稳定状态。
 
 ### G. 宠物切换

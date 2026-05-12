@@ -39,14 +39,15 @@ function createRawManifest(overrides = {}) {
       frameHeight: 208,
     },
     animations: {
-      Idle: { row: 0, frames: 8, fps: 8, loop: true },
+      idle: { row: 0, frames: 8, fps: 8, loop: true },
       waiting: { row: 1, frames: 8, fps: 8, loop: true },
-      wave: { row: 2, frames: 8, fps: 10, loop: false },
-      jump: { row: 3, frames: 8, fps: 10, loop: false },
+      waving: { row: 2, frames: 8, fps: 10, loop: false },
+      jumping: { row: 3, frames: 8, fps: 10, loop: false },
       failed: { row: 4, frames: 8, fps: 8, loop: false },
-      run: { row: 5, frames: 8, fps: 12, loop: true },
-      'run left': { row: 6, frames: 8, fps: 12, loop: true },
-      review: { row: 7, frames: 8, fps: 8, loop: true },
+      running: { row: 5, frames: 8, fps: 12, loop: true },
+      'running-right': { row: 6, frames: 8, fps: 12, loop: true },
+      'running-left': { row: 7, frames: 8, fps: 12, loop: true },
+      review: { row: 8, frames: 8, fps: 8, loop: true },
     },
     ...overrides,
   };
@@ -55,10 +56,14 @@ function createRawManifest(overrides = {}) {
 test('animation names normalize Codex Pet aliases', () => {
   assert.equal(normalizeAnimationName('Idle'), CANONICAL_ANIMATION.IDLE);
   assert.equal(normalizeAnimationName('idle'), CANONICAL_ANIMATION.IDLE);
-  assert.equal(normalizeAnimationName('run left'), CANONICAL_ANIMATION.RUN_LEFT);
-  assert.equal(normalizeAnimationName('runLeft'), CANONICAL_ANIMATION.RUN_LEFT);
-  assert.equal(normalizeAnimationName('Run_Left'), CANONICAL_ANIMATION.RUN_LEFT);
-  assert.equal(normalizeAnimationName('run-left'), CANONICAL_ANIMATION.RUN_LEFT);
+  assert.equal(normalizeAnimationName('wave'), CANONICAL_ANIMATION.WAVING);
+  assert.equal(normalizeAnimationName('jump'), CANONICAL_ANIMATION.JUMPING);
+  assert.equal(normalizeAnimationName('run'), CANONICAL_ANIMATION.RUNNING_RIGHT);
+  assert.equal(normalizeAnimationName('running'), CANONICAL_ANIMATION.RUNNING);
+  assert.equal(normalizeAnimationName('run left'), CANONICAL_ANIMATION.RUNNING_LEFT);
+  assert.equal(normalizeAnimationName('runLeft'), CANONICAL_ANIMATION.RUNNING_LEFT);
+  assert.equal(normalizeAnimationName('Run_Left'), CANONICAL_ANIMATION.RUNNING_LEFT);
+  assert.equal(normalizeAnimationName('running-left'), CANONICAL_ANIMATION.RUNNING_LEFT);
 });
 
 test('raw Codex-style manifest becomes a normalized manifest', () => {
@@ -67,39 +72,57 @@ test('raw Codex-style manifest becomes a normalized manifest', () => {
   assert.equal(manifest.id, 'test-pet');
   assert.equal(manifest.sprite.frameWidth, 192);
   assert.equal(manifest.sprite.frameHeight, 208);
-  assert.equal(manifest.animations.Idle.row, 0);
-  assert.equal(manifest.animations[CANONICAL_ANIMATION.RUN_LEFT].row, 6);
+  assert.equal(manifest.animations.idle.row, 0);
+  assert.equal(manifest.animations[CANONICAL_ANIMATION.RUNNING_LEFT].row, 7);
   assert.deepEqual(validateNormalizedPetManifest(manifest), { ok: true, errors: [] });
 });
 
-test('manifest validation rejects missing frame dimensions and missing idle fallback', () => {
-  const missingFrameSize = createNormalizedPetManifest(createRawManifest({
-    sprite: { src: 'spritesheet.webp' },
-  }));
+test('minimal Codex pet manifest receives atlas defaults and fixed rows', () => {
+  const manifest = createNormalizedPetManifest({
+    id: 'christ-la-te',
+    displayName: 'la-te',
+    description: 'A tiny companion.',
+    spritesheetPath: 'spritesheet.webp',
+  });
+
+  assert.equal(manifest.name, 'la-te');
+  assert.equal(manifest.description, 'A tiny companion.');
+  assert.equal(manifest.sprite.src, 'spritesheet.webp');
+  assert.equal(manifest.sprite.frameWidth, 192);
+  assert.equal(manifest.sprite.frameHeight, 208);
+  assert.equal(manifest.animations.idle.row, 0);
+  assert.equal(manifest.animations[CANONICAL_ANIMATION.RUNNING_RIGHT].row, 1);
+  assert.equal(manifest.animations[CANONICAL_ANIMATION.RUNNING_LEFT].row, 2);
+  assert.equal(manifest.animations[CANONICAL_ANIMATION.WAVING].row, 3);
+  assert.equal(manifest.animations[CANONICAL_ANIMATION.REVIEW].row, 8);
+  assert.equal(manifest.animations.idle.frames, 6);
+  assert.deepEqual(manifest.animations.idle.durationsMs, [280, 110, 110, 140, 140, 320]);
+  assert.deepEqual(validateNormalizedPetManifest(manifest), { ok: true, errors: [] });
+});
+
+test('manifest validation rejects missing idle fallback when custom animations are supplied', () => {
   const noIdleFallback = createNormalizedPetManifest(createRawManifest({
     animations: {
-      wave: { row: 2, frames: 8, fps: 10 },
+      waving: { row: 2, frames: 8, fps: 10 },
     },
   }));
 
-  assert.equal(validateNormalizedPetManifest(missingFrameSize).ok, false);
-  assert.match(validateNormalizedPetManifest(missingFrameSize).errors.join('\n'), /frameWidth/);
   assert.equal(validateNormalizedPetManifest(noIdleFallback).ok, false);
-  assert.match(validateNormalizedPetManifest(noIdleFallback).errors.join('\n'), /Idle or waiting/);
+  assert.match(validateNormalizedPetManifest(noIdleFallback).errors.join('\n'), /idle or waiting/);
 });
 
 test('semantic states resolve through fallback chains', () => {
   const waitingOnly = createNormalizedPetManifest(createRawManifest({
     animations: {
       waiting: { row: 1, frames: 8, fps: 8, loop: true },
-      jump: { row: 3, frames: 8, fps: 10, loop: false },
-      run: { row: 5, frames: 8, fps: 12, loop: true },
+      jumping: { row: 3, frames: 8, fps: 10, loop: false },
+      'running-right': { row: 5, frames: 8, fps: 12, loop: true },
     },
   }));
 
   assert.equal(resolveAnimationForSemanticState(waitingOnly, PET_SEMANTIC_STATE.IDLE).animationName, CANONICAL_ANIMATION.WAITING);
-  assert.equal(resolveAnimationForSemanticState(waitingOnly, PET_SEMANTIC_STATE.ATTENTION).animationName, CANONICAL_ANIMATION.JUMP);
-  assert.equal(resolveAnimationForSemanticState(waitingOnly, PET_SEMANTIC_STATE.MOVING_LEFT).animationName, CANONICAL_ANIMATION.RUN);
+  assert.equal(resolveAnimationForSemanticState(waitingOnly, PET_SEMANTIC_STATE.ATTENTION).animationName, CANONICAL_ANIMATION.JUMPING);
+  assert.equal(resolveAnimationForSemanticState(waitingOnly, PET_SEMANTIC_STATE.MOVING_LEFT).animationName, CANONICAL_ANIMATION.RUNNING_RIGHT);
 });
 
 test('pet package loader requires pet.json and spritesheet.webp', () => {
@@ -180,4 +203,3 @@ test('drag threshold and overlay expansion are deterministic', () => {
     { x: 88, y: 60, width: 224, height: 256 },
   );
 });
-
