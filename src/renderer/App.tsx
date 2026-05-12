@@ -5,6 +5,7 @@ import { useRoamingCatState } from './hooks/useRoamingCatState';
 import { usePresenceState } from './hooks/usePresenceState';
 import { useVisualPresenceState } from './hooks/useVisualPresenceState';
 import { MoodText } from './components/MoodText/MoodText';
+import { PetStage } from './pet/PetStage';
 import { clampPercent, getCarePrompt } from './systems/catBehavior';
 import styles from './App.module.css';
 
@@ -78,6 +79,10 @@ function getVisualShadowStyle(visualState: string): CSSProperties {
 }
 
 export default function App() {
+  if (window.electronAPI?.getActivePet) {
+    return <PetStage />;
+  }
+
   const roamingState = useRoamingCatState();
   const { catState } = useCatState();
   const presenceState = usePresenceState();

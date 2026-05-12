@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const JSZip = require('jszip');
 
 const {
   CANONICAL_ANIMATION,
@@ -265,13 +266,104 @@ function loadPetPackage(packageDir) {
   };
 }
 
+function findZipEntry(zip, filename, options = {}) {
+  const expectedName = String(filename).replace(/^\/+/, '').toLowerCase();
+  const expectedBaseName = path.basename(expectedName);
+  const preferredDir = options.preferredDir ? String(options.preferredDir).replace(/^\/+|\/+$/g, '') : '';
+  const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+
+  if (preferredDir) {
+    const exactPath = `${preferredDir}/${expectedName}`.toLowerCase();
+    const exact = entries.find((entry) => entry.name.toLowerCase() === exactPath);
+    if (exact) return exact;
+  }
+
+  return entries.find((entry) => entry.name.split(/[\\/]/).pop()?.toLowerCase() === expectedBaseName);
+}
+
+async function readPetZipBuffer(zipBuffer) {
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(zipBuffer);
+  } catch (error) {
+    return {
+      ok: false,
+      errors: [`zip could not be parsed: ${error.message}`],
+      manifest: null,
+    };
+  }
+
+  const manifestEntry = findZipEntry(zip, 'pet.json');
+  if (!manifestEntry) {
+    return {
+      ok: false,
+      errors: ['pet.json is required'],
+      manifest: null,
+    };
+  }
+
+  let rawManifest;
+  try {
+    rawManifest = JSON.parse(await manifestEntry.async('string'));
+  } catch (error) {
+    return {
+      ok: false,
+      errors: [`pet.json could not be parsed: ${error.message}`],
+      manifest: null,
+    };
+  }
+
+  let manifest;
+  try {
+    manifest = createNormalizedPetManifest(rawManifest, {
+      id: path.basename(path.dirname(manifestEntry.name)),
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      errors: [error.message],
+      manifest: null,
+    };
+  }
+
+  const validation = validateNormalizedPetManifest(manifest);
+  const manifestDir = path.dirname(manifestEntry.name) === '.' ? '' : path.dirname(manifestEntry.name);
+  const spriteEntry = findZipEntry(zip, manifest.sprite.src, { preferredDir: manifestDir });
+  if (!spriteEntry) {
+    validation.errors.push(`${manifest.sprite.src} is required`);
+  }
+
+  return {
+    ok: validation.errors.length === 0,
+    errors: validation.errors,
+    manifest,
+    manifestEntryName: manifestEntry.name,
+    spriteEntryName: spriteEntry?.name ?? null,
+  };
+}
+
+async function loadPetZipFile(zipPath) {
+  try {
+    return await readPetZipBuffer(fs.readFileSync(zipPath));
+  } catch (error) {
+    return {
+      ok: false,
+      errors: [`zip could not be read: ${error.message}`],
+      manifest: null,
+    };
+  }
+}
+
 module.exports = {
   CODEX_PET_ATLAS,
   CODEX_PET_DEFAULT_ANIMATIONS,
   createNormalizedPetManifest,
   createDefaultCodexPetAnimations,
+  findZipEntry,
   loadPetPackage,
+  loadPetZipFile,
   normalizeAnimationEntry,
   normalizeAnimations,
+  readPetZipBuffer,
   validateNormalizedPetManifest,
 };

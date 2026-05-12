@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const Store = require('electron-store').default;
 const {
   DEFAULT_WINDOW_SIZE,
@@ -55,6 +56,17 @@ const {
   recordPresenceThresholdChange,
   createValidationArtifacts,
 } = require('./shared/validationMetrics');
+const {
+  loadPetPackage,
+} = require('./shared/pet/codexPetAdapter');
+const {
+  PET_RUNTIME_EVENT,
+  createPetBehaviorState,
+  reducePetBehaviorState,
+} = require('./shared/pet/behaviorController');
+const {
+  resolveAnimationForSemanticState,
+} = require('./shared/pet/petManifest');
 
 const store = new Store();
 const DEV_SERVER_URL = process.env.PAWKIT_VITE_DEV_SERVER_URL || process.env.VITE_DEV_SERVER_URL;
@@ -126,6 +138,117 @@ function releaseProcessLock() {
   }
 }
 
+function getRepoRoot() {
+  return path.resolve(__dirname, '..');
+}
+
+function getCommunityPetsDir() {
+  return path.join(getRepoRoot(), 'pets', 'community');
+}
+
+function getBuiltInPetsDir() {
+  return path.join(getRepoRoot(), 'pets', 'builtin');
+}
+
+function findFirstPetPackageDir(parentDir) {
+  if (!fs.existsSync(parentDir)) return null;
+
+  const directories = fs
+    .readdirSync(parentDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(parentDir, entry.name))
+    .sort((left, right) => left.localeCompare(right));
+
+  return directories.find((directory) => fs.existsSync(path.join(directory, 'pet.json'))) ?? null;
+}
+
+function resolveActivePetPackageDir() {
+  const envDir = String(process.env.PAWKIT_ACTIVE_PET_DIR || '').trim();
+  if (envDir) return path.resolve(envDir);
+
+  const persistedDir = String(store.get('pet.activePackageDir', '') || '').trim();
+  if (persistedDir && fs.existsSync(persistedDir)) return persistedDir;
+
+  return findFirstPetPackageDir(getCommunityPetsDir()) ?? findFirstPetPackageDir(getBuiltInPetsDir());
+}
+
+function loadActivePetPackage() {
+  const packageDir = resolveActivePetPackageDir();
+  if (!packageDir) {
+    return {
+      ok: false,
+      errors: ['No pet package found. Add one under pets/community/<pet-name>/ or set PAWKIT_ACTIVE_PET_DIR.'],
+      packageDir: null,
+      manifest: null,
+      spriteUrl: null,
+    };
+  }
+
+  const loaded = loadPetPackage(packageDir);
+  if (!loaded.ok) {
+    return {
+      ok: false,
+      errors: loaded.errors,
+      packageDir,
+      manifest: loaded.manifest,
+      spriteUrl: null,
+    };
+  }
+
+  store.set('pet.activePackageDir', packageDir);
+
+  return {
+    ok: true,
+    errors: [],
+    packageDir,
+    manifest: loaded.manifest,
+    spritePath: loaded.spritePath,
+    spriteUrl: pathToFileURL(loaded.spritePath).href,
+  };
+}
+
+function getActivePetPackage() {
+  if (!activePetPackage) {
+    activePetPackage = loadActivePetPackage();
+  }
+
+  return activePetPackage;
+}
+
+function createPetSnapshot() {
+  const packageInfo = getActivePetPackage();
+  if (!packageInfo.ok || !packageInfo.manifest) {
+    return {
+      ok: false,
+      errors: packageInfo.errors,
+      packageDir: packageInfo.packageDir,
+      manifest: packageInfo.manifest,
+      spriteUrl: packageInfo.spriteUrl,
+      behavior: petRuntimeState,
+      animationName: null,
+      animation: null,
+    };
+  }
+
+  const resolvedAnimation = resolveAnimationForSemanticState(packageInfo.manifest, petRuntimeState.semanticState);
+
+  return {
+    ok: Boolean(resolvedAnimation.animation),
+    errors: resolvedAnimation.animation ? [] : [`No animation for ${petRuntimeState.semanticState}`],
+    packageDir: packageInfo.packageDir,
+    manifest: packageInfo.manifest,
+    spriteUrl: packageInfo.spriteUrl,
+    behavior: petRuntimeState,
+    animationName: resolvedAnimation.animationName,
+    animation: resolvedAnimation.animation,
+  };
+}
+
+function sendPetStateUpdate() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('pet-state-updated', createPetSnapshot());
+}
+
 let mainWindow = null;
 let tray = null;
 let roamingRuntimeState = null;
@@ -139,6 +262,8 @@ let presenceRuntimeState = null;
 let presenceInterval = null;
 let automationIdleSequence = null;
 let automationIdleSequenceIndex = 0;
+let petRuntimeState = createPetBehaviorState({ now: Date.now() });
+let activePetPackage = null;
 
 function createFallbackTrayIcon() {
   const svg = `
@@ -634,6 +759,7 @@ function getAutomationRendererSnapshotScript() {
     const catPoseTarget = document.querySelector('[data-cat-pose]');
     const panel = document.querySelector('[aria-label="care-status"]');
     const hud = document.querySelector('[aria-label="care-hud"]');
+    const pet = document.querySelector('[data-pet-id]');
     const toSnapshot = (element) => {
       const rect = element ? element.getBoundingClientRect() : null;
       const style = element ? window.getComputedStyle(element) : null;
@@ -661,6 +787,7 @@ function getAutomationRendererSnapshotScript() {
       };
     };
     const careStatus = toSnapshot(panel);
+    const petSnapshot = toSnapshot(pet);
     return {
       presenceMode: root?.getAttribute('data-presence-mode') ?? null,
       visualState: visualStateTarget?.getAttribute('data-visual-state') ?? null,
@@ -670,6 +797,13 @@ function getAutomationRendererSnapshotScript() {
       rect: careStatus.rect,
       careStatus,
       careHud: toSnapshot(hud),
+      pet: {
+        id: pet?.getAttribute('data-pet-id') ?? null,
+        state: pet?.getAttribute('data-pet-state') ?? null,
+        animation: pet?.getAttribute('data-pet-animation') ?? null,
+        visible: petSnapshot.visible,
+        rect: petSnapshot.rect,
+      },
     };
   })()`;
 }
@@ -954,13 +1088,14 @@ const createWindow = () => {
   }
 
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  mainWindow.setIgnoreMouseEvents(false);
   mainWindow.once('ready-to-show', () => {
     mainWindow?.showInactive();
     syncWindowToPresenceState();
     sendRoamingStateUpdate();
     sendPresenceStateUpdate();
     sendCareStateUpdate();
+    sendPetStateUpdate();
     maybeWriteAutomationRendererStatusSnapshot();
     maybeWriteAutomationPresenceStatusSnapshot();
   });
@@ -1060,6 +1195,18 @@ ipcMain.handle('get-cat-state', () => {
 
 
 ipcMain.handle('get-presence-state', () => getCurrentPresenceSnapshot());
+
+ipcMain.handle('pet:get-active', () => createPetSnapshot());
+
+ipcMain.handle('pet:event', (_event, eventName) => {
+  const safeEventName = Object.values(PET_RUNTIME_EVENT).includes(eventName)
+    ? eventName
+    : PET_RUNTIME_EVENT.APP_STARTED;
+  petRuntimeState = reducePetBehaviorState(petRuntimeState, safeEventName, { now: Date.now() });
+  const snapshot = createPetSnapshot();
+  sendPetStateUpdate();
+  return snapshot;
+});
 
 ipcMain.handle('set-presence-idle-threshold', (_event, seconds) => {
   setPresenceIdleThresholdFromMenu(seconds);

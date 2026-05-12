@@ -1,9 +1,22 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
-const { createNormalizedPetManifest } = require('../src/shared/pet/codexPetAdapter');
+const { createNormalizedPetManifest, loadPetPackage } = require('../src/shared/pet/codexPetAdapter');
 const { PET_RUNTIME_EVENT, createPetBehaviorState, reducePetBehaviorState } = require('../src/shared/pet/behaviorController');
 const { PET_SEMANTIC_STATE, resolveAnimationForSemanticState } = require('../src/shared/pet/petManifest');
 const { createDefaultPlacement, resolvePlacementForDisplays } = require('../src/shared/pet/placement');
+
+function findFirstCommunityPetDir() {
+  const communityDir = path.join(process.cwd(), 'pets', 'community');
+  if (!fs.existsSync(communityDir)) return null;
+  return fs
+    .readdirSync(communityDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(communityDir, entry.name))
+    .sort((left, right) => left.localeCompare(right))
+    .find((directory) => fs.existsSync(path.join(directory, 'pet.json'))) ?? null;
+}
 
 const manifest = createNormalizedPetManifest({
   id: 'verify-pet',
@@ -30,6 +43,12 @@ assert.ok(placement.bounds.y >= 0);
 assert.ok(restored.bounds.x <= 1280 - 192);
 assert.ok(restored.bounds.y <= 800 - 208);
 
+const samplePetDir = process.env.PAWKIT_VERIFY_PET_DIR || findFirstCommunityPetDir();
+const samplePet = samplePetDir ? loadPetPackage(samplePetDir) : null;
+if (samplePetDir) {
+  assert.equal(samplePet.ok, true, samplePet.errors?.join('\n'));
+}
+
 console.log(JSON.stringify({
   ok: true,
   manifestId: manifest.id,
@@ -37,4 +56,11 @@ console.log(JSON.stringify({
   movingLeftFallback: leftMovement.animationName,
   defaultPlacement: placement.bounds,
   restoredPlacement: restored.bounds,
+  samplePet: samplePet
+    ? {
+        id: samplePet.manifest.id,
+        name: samplePet.manifest.name,
+        sprite: samplePet.spritePath,
+      }
+    : null,
 }, null, 2));

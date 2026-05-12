@@ -3,10 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const JSZip = require('jszip');
 
 const {
   createNormalizedPetManifest,
   loadPetPackage,
+  readPetZipBuffer,
   validateNormalizedPetManifest,
 } = require('../src/shared/pet/codexPetAdapter');
 const {
@@ -139,6 +141,24 @@ test('pet package loader requires pet.json and spritesheet.webp', () => {
   assert.equal(loadPetPackage(missingSpriteDir).ok, false);
   assert.match(loadPetPackage(missingSpriteDir).errors.join('\n'), /spritesheet\.webp/);
   assert.equal(loadPetPackage(validDir).ok, true);
+});
+
+test('pet zip loader accepts nested CodexPets packages', async () => {
+  const zip = new JSZip();
+  zip.file('github-com-strhercules-goku/pet.json', JSON.stringify({
+    id: 'github-com-strhercules-goku',
+    displayName: 'Goku',
+    description: 'Community sample package.',
+    spritesheetPath: 'spritesheet.webp',
+  }));
+  zip.file('github-com-strhercules-goku/spritesheet.webp', 'placeholder');
+
+  const result = await readPetZipBuffer(await zip.generateAsync({ type: 'nodebuffer' }));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.manifest.id, 'github-com-strhercules-goku');
+  assert.equal(result.spriteEntryName, 'github-com-strhercules-goku/spritesheet.webp');
+  assert.equal(result.manifest.animations['running-left'].row, 2);
 });
 
 test('behavior controller maps events to stable and one-shot semantic states', () => {
