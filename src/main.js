@@ -70,6 +70,11 @@ const {
 const {
   resolveAnimationForSemanticState,
 } = require('./shared/pet/petManifest');
+const {
+  clampRectToWorkArea,
+  createDefaultPlacement,
+  resolvePlacementForDisplays,
+} = require('./shared/pet/placement');
 
 const DEV_SERVER_URL = process.env.PAWKIT_VITE_DEV_SERVER_URL || process.env.VITE_DEV_SERVER_URL;
 
@@ -99,6 +104,8 @@ const PET_MVP_WINDOW_SIZE = Object.freeze({
   width: 192,
   height: 208,
 });
+const PET_PLACEMENT_STORE_KEY = 'pet.placement';
+const PET_PLACEMENT_PADDING = 0;
 const PET_ASSET_PROTOCOL = 'pawkit-pet';
 const petAssetRegistry = new Map();
 let hasRegisteredPetAssetProtocol = false;
@@ -177,6 +184,153 @@ function getCommunityPetsDir() {
 
 function getBuiltInPetsDir() {
   return path.join(getRepoRoot(), 'pets', 'builtin');
+}
+
+function getDisplayDescriptors() {
+  const primaryId = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((display) => ({
+    id: display.id,
+    primary: display.id === primaryId,
+    scaleFactor: display.scaleFactor,
+    workArea: display.workArea,
+  }));
+}
+
+function normalizePetPlacementForCurrentSize(placement) {
+  if (!placement?.bounds) return placement ?? null;
+  return {
+    ...placement,
+    bounds: {
+      ...placement.bounds,
+      width: PET_MVP_WINDOW_SIZE.width,
+      height: PET_MVP_WINDOW_SIZE.height,
+    },
+  };
+}
+
+function getPersistedPetPlacement() {
+  return normalizePetPlacementForCurrentSize(store.get(PET_PLACEMENT_STORE_KEY, null));
+}
+
+function resolveInitialPetPlacement() {
+  const displays = getDisplayDescriptors();
+  const persistedPlacement = getPersistedPetPlacement();
+
+  if (persistedPlacement?.bounds) {
+    return resolvePlacementForDisplays(persistedPlacement, displays, {
+      padding: PET_PLACEMENT_PADDING,
+    });
+  }
+
+  const primaryDisplay = displays.find((display) => display.primary) ?? displays[0];
+  return createDefaultPlacement(primaryDisplay.workArea, PET_MVP_WINDOW_SIZE, {
+    displayId: primaryDisplay.id,
+  });
+}
+
+function getCurrentPetPlacement() {
+  if (!petPlacementState) {
+    petPlacementState = resolveInitialPetPlacement();
+  }
+
+  return petPlacementState;
+}
+
+function persistPetPlacement() {
+  if (!petPlacementState) return;
+  store.set(PET_PLACEMENT_STORE_KEY, petPlacementState);
+}
+
+function createPetPlacementFromBounds(bounds) {
+  const nextBounds = {
+    x: Math.round(Number(bounds?.x) || 0),
+    y: Math.round(Number(bounds?.y) || 0),
+    width: PET_MVP_WINDOW_SIZE.width,
+    height: PET_MVP_WINDOW_SIZE.height,
+  };
+  const center = {
+    x: nextBounds.x + nextBounds.width / 2,
+    y: nextBounds.y + nextBounds.height / 2,
+  };
+  const display = screen.getDisplayNearestPoint(center);
+  const clampedBounds = clampRectToWorkArea(nextBounds, display.workArea, {
+    padding: PET_PLACEMENT_PADDING,
+  });
+
+  return {
+    displayId: display.id,
+    anchor: 'manual',
+    bounds: clampedBounds,
+    scaleFactor: display.scaleFactor,
+  };
+}
+
+function applyPetPlacementBounds(bounds, options = {}) {
+  petPlacementState = createPetPlacementFromBounds(bounds);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBounds({
+      ...petPlacementState.bounds,
+      width: PET_MVP_WINDOW_SIZE.width,
+      height: PET_MVP_WINDOW_SIZE.height,
+    }, false);
+  }
+
+  if (options.persist) {
+    persistPetPlacement();
+  }
+
+  return petPlacementState;
+}
+
+function normalizeDragPoint(point = {}) {
+  const x = Number(point.screenX);
+  const y = Number(point.screenY);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  return {
+    screenX: x,
+    screenY: y,
+  };
+}
+
+function startPetDrag(point) {
+  const dragPoint = normalizeDragPoint(point);
+  if (!dragPoint || !mainWindow || mainWindow.isDestroyed()) return getCurrentPetPlacement();
+
+  petDragState = {
+    startPoint: dragPoint,
+    startBounds: mainWindow.getBounds(),
+  };
+
+  return getCurrentPetPlacement();
+}
+
+function movePetDrag(point) {
+  const dragPoint = normalizeDragPoint(point);
+  if (!dragPoint || !mainWindow || mainWindow.isDestroyed()) return getCurrentPetPlacement();
+
+  if (!petDragState) {
+    startPetDrag(dragPoint);
+  }
+
+  const dx = dragPoint.screenX - petDragState.startPoint.screenX;
+  const dy = dragPoint.screenY - petDragState.startPoint.screenY;
+
+  return applyPetPlacementBounds({
+    x: petDragState.startBounds.x + dx,
+    y: petDragState.startBounds.y + dy,
+    width: PET_MVP_WINDOW_SIZE.width,
+    height: PET_MVP_WINDOW_SIZE.height,
+  });
+}
+
+function endPetDrag(point) {
+  const placement = petDragState ? movePetDrag(point) : getCurrentPetPlacement();
+  petDragState = null;
+  persistPetPlacement();
+  return placement;
 }
 
 function createPetAssetUrl(filePath) {
@@ -268,6 +422,7 @@ function createPetSnapshot() {
       packageDir: packageInfo.packageDir,
       manifest: packageInfo.manifest,
       spriteUrl: packageInfo.spriteUrl,
+      placement: getCurrentPetPlacement(),
       behavior: petRuntimeState,
       animationName: null,
       animation: null,
@@ -284,6 +439,7 @@ function createPetSnapshot() {
     packageDir: packageInfo.packageDir,
     manifest: packageInfo.manifest,
     spriteUrl: packageInfo.spriteUrl,
+    placement: getCurrentPetPlacement(),
     behavior: petRuntimeState,
     animationName: resolvedAnimation.animationName,
     animation: resolvedAnimation.animation,
@@ -310,6 +466,8 @@ let automationIdleSequence = null;
 let automationIdleSequenceIndex = 0;
 let petRuntimeState = createPetBehaviorState({ now: Date.now() });
 let activePetPackage = null;
+let petPlacementState = null;
+let petDragState = null;
 
 function createFallbackTrayIcon() {
   const svg = `
@@ -927,6 +1085,62 @@ function maybeWriteAutomationPresenceStatusSnapshot() {
   }, intervalMs);
 }
 
+function parseAutomationPetDragDelta() {
+  const raw = String(process.env.PAWKIT_AUTOMATION_PET_DRAG_DELTA || '').trim();
+  if (!raw) return null;
+
+  const [rawX, rawY] = raw.split(',');
+  const dx = Number(rawX);
+  const dy = Number(rawY);
+
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null;
+
+  return { dx, dy };
+}
+
+function maybeRunAutomationPetDrag() {
+  const delta = parseAutomationPetDragDelta();
+  const statusFile = String(process.env.PAWKIT_AUTOMATION_PET_DRAG_STATUS_FILE || '').trim();
+  if (!delta && !statusFile) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  setTimeout(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    const before = mainWindow.getBounds();
+    const startPoint = {
+      screenX: before.x + before.width / 2,
+      screenY: before.y + before.height / 2,
+    };
+    const endPoint = {
+      screenX: startPoint.screenX + (delta?.dx ?? 0),
+      screenY: startPoint.screenY + (delta?.dy ?? 0),
+    };
+
+    startPetDrag(startPoint);
+    const placement = endPetDrag(endPoint);
+    const after = mainWindow.getBounds();
+    sendPetStateUpdate();
+
+    if (!statusFile) return;
+
+    try {
+      fs.writeFileSync(
+        statusFile,
+        JSON.stringify({
+          executedAt: new Date().toISOString(),
+          delta: delta ?? { dx: 0, dy: 0 },
+          before,
+          after,
+          placement,
+        }, null, 2),
+      );
+    } catch (error) {
+      console.error('Failed to write automation pet drag status file:', error);
+    }
+  }, 650);
+}
+
 function maybeRunAutomationCareActions() {
   const rawActions = String(process.env.PAWKIT_AUTOMATION_ACTIONS || '').trim();
   if (!rawActions) return;
@@ -988,16 +1202,13 @@ function sendPresenceStateUpdate() {
 
 function syncWindowToPresenceState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const presenceSnapshot = getCurrentPresenceSnapshot();
-  const position = presenceSnapshot.mode === PRESENCE_MODE.WORK
-    ? createDockedPoint(getPrimaryRoamingArea(), PET_MVP_WINDOW_SIZE)
-    : roamingRuntimeState;
-  if (!position) return;
+  const placement = getCurrentPetPlacement();
+  if (!placement?.bounds) return;
 
   mainWindow.setBounds(
     {
-      x: Math.round(position.x),
-      y: Math.round(position.y),
+      x: Math.round(placement.bounds.x),
+      y: Math.round(placement.bounds.y),
       width: PET_MVP_WINDOW_SIZE.width,
       height: PET_MVP_WINDOW_SIZE.height,
     },
@@ -1096,12 +1307,13 @@ const createWindow = () => {
     now,
   });
   persistCareState(true);
+  const initialPetPlacement = getCurrentPetPlacement();
 
   mainWindow = new BrowserWindow({
     width: PET_MVP_WINDOW_SIZE.width,
     height: PET_MVP_WINDOW_SIZE.height,
-    x: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, PET_MVP_WINDOW_SIZE) : roamingRuntimeState).x),
-    y: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, PET_MVP_WINDOW_SIZE) : roamingRuntimeState).y),
+    x: Math.round(initialPetPlacement.bounds.x),
+    y: Math.round(initialPetPlacement.bounds.y),
     frame: false,
     transparent: true,
     resizable: false,
@@ -1146,6 +1358,7 @@ const createWindow = () => {
     sendPetStateUpdate();
     maybeWriteAutomationRendererStatusSnapshot();
     maybeWriteAutomationPresenceStatusSnapshot();
+    maybeRunAutomationPetDrag();
   });
 
   startPresenceLoop();
@@ -1211,6 +1424,7 @@ app.on('before-quit', () => {
   persistRoamingState(true);
   persistPresenceState();
   persistCareState(true);
+  persistPetPlacement();
   persistValidationState();
   stopPresenceLoop();
   stopRoamingLoop();
@@ -1256,6 +1470,12 @@ ipcMain.handle('pet:event', (_event, eventName) => {
   sendPetStateUpdate();
   return snapshot;
 });
+
+ipcMain.handle('pet:drag-start', (_event, point) => startPetDrag(point));
+
+ipcMain.handle('pet:drag-move', (_event, point) => movePetDrag(point));
+
+ipcMain.handle('pet:drag-end', (_event, point) => endPetDrag(point));
 
 ipcMain.handle('set-presence-idle-threshold', (_event, seconds) => {
   setPresenceIdleThresholdFromMenu(seconds);

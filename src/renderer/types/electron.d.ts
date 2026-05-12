@@ -63,6 +63,24 @@ export interface PetManifestPayload {
   animations: Record<string, PetAnimationPayload>;
 }
 
+
+export interface PetPlacementPayload {
+  displayId: string | number | null;
+  anchor: string;
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  scaleFactor: number;
+}
+
+export interface PetDragPointPayload {
+  screenX: number;
+  screenY: number;
+}
+
 export interface PetStatePayload {
   ok: boolean;
   errors: string[];
@@ -71,6 +89,7 @@ export interface PetStatePayload {
   packageDir: string | null;
   manifest: PetManifestPayload | null;
   spriteUrl: string | null;
+  placement?: PetPlacementPayload;
   behavior: {
     semanticState: string;
     lastStableState: string;
@@ -88,6 +107,9 @@ interface ElectronAPI {
   getPresenceState: () => Promise<PresenceStatePayload>;
   getActivePet: () => Promise<PetStatePayload>;
   sendPetEvent: (eventName: string) => Promise<PetStatePayload>;
+  startPetDrag: (point: PetDragPointPayload) => Promise<PetPlacementPayload>;
+  movePetDrag: (point: PetDragPointPayload) => Promise<PetPlacementPayload>;
+  endPetDrag: (point: PetDragPointPayload) => Promise<PetPlacementPayload>;
   feedCat: () => Promise<{ hunger: number; lastFed: number | null }>;
   waterCat: () => Promise<{ hydration: number; lastWatered: number | null }>;
   petCat: () => Promise<{ happiness: number; trustLevel: number; lastPet: number | null }>;
