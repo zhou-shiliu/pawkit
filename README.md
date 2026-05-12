@@ -49,7 +49,8 @@ Pet MVP Reset 聚焦“宠物播放器”，而不是继续扩展照料系统。
 - 通过 adapter 把外部宠物资源转换为 Pawkit 内部 normalized manifest。
 - 用少量语义状态驱动动作：`idle / working / attention / success / failed / sleepy / movingLeft / movingRight`。
 - 默认界面不展示旧照料面板、复杂设置页或验证报告。
-- 计划新增 `verify:pet-mvp` 作为 Reset 后的主门禁。
+- `npm run dev` 与 `npm start` 都进入 Pet MVP 桌面宠物入口；旧照料界面仅作为 legacy 预览保留。
+- `verify:pet-mvp` 是 Reset 后的主门禁。
 
 ## 历史 M3 目标
 
@@ -72,8 +73,10 @@ npm run verify:m1:manual
 npm run verify:m1-closure
 npm run verify:m2:presence
 npm run verify:m3:livelike
-# Pet MVP Reset gate planned: npm run verify:pet-mvp
-npm run electron:dev
+npm run verify:pet-mvp
+npm run dev        # 启动 Electron 桌面宠物 MVP
+npm run dev:web    # 仅网页预览，不加载本地宠物包
+npm run dev:legacy # 查看旧照料界面预览
 ```
 
 ## 参考文档

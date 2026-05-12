@@ -4,6 +4,7 @@ import { usePetRuntime } from './usePetRuntime';
 import styles from './PetStage.module.css';
 
 export function PetStage() {
+  const hasPetApi = Boolean(window.electronAPI?.getActivePet);
   const { loading, petState, sendPetEvent } = usePetRuntime();
 
   const handlePetClick = useCallback(() => {
@@ -22,7 +23,9 @@ export function PetStage() {
     return (
       <main className={styles.desktop} data-pet-error="true">
         <section className={styles.errorPanel} aria-label="pet-error">
-          {petState?.errors?.[0] ?? 'No pet package found'}
+          {petState?.errors?.[0] ?? (hasPetApi
+            ? 'No pet package found'
+            : 'Pet MVP 需要桌面运行时。请运行 npm run dev 启动 Electron 宠物。')}
         </section>
       </main>
     );

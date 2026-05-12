@@ -30,7 +30,7 @@
   flex: 0 0 auto;
   image-rendering: pixelated;
   background-repeat: no-repeat;
-  transform: translateY(18px) scale(0.72);
+  transform: none;
   transform-origin: bottom center;
 }
 

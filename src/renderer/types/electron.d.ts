@@ -66,6 +66,8 @@ export interface PetManifestPayload {
 export interface PetStatePayload {
   ok: boolean;
   errors: string[];
+  warnings?: string[];
+  source?: string | null;
   packageDir: string | null;
   manifest: PetManifestPayload | null;
   spriteUrl: string | null;

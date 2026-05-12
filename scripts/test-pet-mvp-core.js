@@ -29,6 +29,10 @@ const {
   isDragIntent,
   resolvePlacementForDisplays,
 } = require('../src/shared/pet/placement');
+const {
+  createPetPackageCandidates,
+  findPetPackageDirs,
+} = require('../src/shared/pet/packageDiscovery');
 
 function createRawManifest(overrides = {}) {
   return {
@@ -141,6 +145,30 @@ test('pet package loader requires pet.json and spritesheet.webp', () => {
   assert.equal(loadPetPackage(missingSpriteDir).ok, false);
   assert.match(loadPetPackage(missingSpriteDir).errors.join('\n'), /spritesheet\.webp/);
   assert.equal(loadPetPackage(validDir).ok, true);
+});
+
+
+test('pet package discovery falls back from stale persisted path to community package', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pawkit-pet-discovery-'));
+  const staleDir = path.join(tempDir, 'stale-persisted');
+  const communityDir = path.join(tempDir, 'community');
+  const validCommunityDir = path.join(communityDir, 'valid-community');
+  fs.mkdirSync(staleDir, { recursive: true });
+  fs.mkdirSync(validCommunityDir, { recursive: true });
+  fs.writeFileSync(path.join(validCommunityDir, 'pet.json'), JSON.stringify(createRawManifest({ id: 'community-pet' })), 'utf8');
+  fs.writeFileSync(path.join(validCommunityDir, 'spritesheet.webp'), 'placeholder');
+
+  const discovered = findPetPackageDirs(communityDir);
+  const candidates = createPetPackageCandidates({
+    persistedDir: staleDir,
+    communityDir,
+  });
+  const firstLoadable = candidates.find((candidate) => loadPetPackage(candidate.directory).ok);
+
+  assert.deepEqual(discovered, [validCommunityDir]);
+  assert.equal(candidates[0].source, 'persisted');
+  assert.equal(candidates[1].source, 'community');
+  assert.equal(firstLoadable.directory, validCommunityDir);
 });
 
 test('pet zip loader accepts nested CodexPets packages', async () => {

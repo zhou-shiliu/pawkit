@@ -4,7 +4,6 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const Store = require('electron-store').default;
 const {
-  DEFAULT_WINDOW_SIZE,
   advanceRoamingState,
   createInitialRoamingState,
   toPersistedRoamingState,
@@ -60,6 +59,9 @@ const {
   loadPetPackage,
 } = require('./shared/pet/codexPetAdapter');
 const {
+  createPetPackageCandidates,
+} = require('./shared/pet/packageDiscovery');
+const {
   PET_RUNTIME_EVENT,
   createPetBehaviorState,
   reducePetBehaviorState,
@@ -85,6 +87,10 @@ const ROAMING_EDGE_INSET = Object.freeze({
   right: 28,
   top: 12,
   bottom: 28,
+});
+const PET_MVP_WINDOW_SIZE = Object.freeze({
+  width: 192,
+  height: 208,
 });
 const SINGLE_INSTANCE_LOCK_PATH = path.join(app.getPath('temp'), 'pawkit-single-instance.lock');
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -150,60 +156,46 @@ function getBuiltInPetsDir() {
   return path.join(getRepoRoot(), 'pets', 'builtin');
 }
 
-function findFirstPetPackageDir(parentDir) {
-  if (!fs.existsSync(parentDir)) return null;
-
-  const directories = fs
-    .readdirSync(parentDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(parentDir, entry.name))
-    .sort((left, right) => left.localeCompare(right));
-
-  return directories.find((directory) => fs.existsSync(path.join(directory, 'pet.json'))) ?? null;
-}
-
-function resolveActivePetPackageDir() {
-  const envDir = String(process.env.PAWKIT_ACTIVE_PET_DIR || '').trim();
-  if (envDir) return path.resolve(envDir);
-
-  const persistedDir = String(store.get('pet.activePackageDir', '') || '').trim();
-  if (persistedDir && fs.existsSync(persistedDir)) return persistedDir;
-
-  return findFirstPetPackageDir(getCommunityPetsDir()) ?? findFirstPetPackageDir(getBuiltInPetsDir());
-}
-
 function loadActivePetPackage() {
-  const packageDir = resolveActivePetPackageDir();
-  if (!packageDir) {
-    return {
-      ok: false,
-      errors: ['No pet package found. Add one under pets/community/<pet-name>/ or set PAWKIT_ACTIVE_PET_DIR.'],
-      packageDir: null,
-      manifest: null,
-      spriteUrl: null,
-    };
-  }
+  const candidates = createPetPackageCandidates({
+    envDir: process.env.PAWKIT_ACTIVE_PET_DIR,
+    persistedDir: store.get('pet.activePackageDir', ''),
+    communityDir: getCommunityPetsDir(),
+    builtInDir: getBuiltInPetsDir(),
+  });
+  const failures = [];
 
-  const loaded = loadPetPackage(packageDir);
-  if (!loaded.ok) {
+  for (const candidate of candidates) {
+    const loaded = loadPetPackage(candidate.directory);
+    if (!loaded.ok) {
+      failures.push(`${candidate.source}: ${candidate.directory}: ${loaded.errors.join('; ')}`);
+      continue;
+    }
+
+    store.set('pet.activePackageDir', candidate.directory);
+
     return {
-      ok: false,
-      errors: loaded.errors,
-      packageDir,
+      ok: true,
+      errors: [],
+      warnings: failures,
+      source: candidate.source,
+      packageDir: candidate.directory,
       manifest: loaded.manifest,
-      spriteUrl: null,
+      spritePath: loaded.spritePath,
+      spriteUrl: pathToFileURL(loaded.spritePath).href,
     };
   }
-
-  store.set('pet.activePackageDir', packageDir);
 
   return {
-    ok: true,
-    errors: [],
-    packageDir,
-    manifest: loaded.manifest,
-    spritePath: loaded.spritePath,
-    spriteUrl: pathToFileURL(loaded.spritePath).href,
+    ok: false,
+    errors: failures.length > 0
+      ? failures
+      : ['No pet package found. Add one under pets/community/<pet-name>/ or set PAWKIT_ACTIVE_PET_DIR.'],
+    warnings: [],
+    source: null,
+    packageDir: null,
+    manifest: null,
+    spriteUrl: null,
   };
 }
 
@@ -221,6 +213,8 @@ function createPetSnapshot() {
     return {
       ok: false,
       errors: packageInfo.errors,
+      warnings: packageInfo.warnings ?? [],
+      source: packageInfo.source ?? null,
       packageDir: packageInfo.packageDir,
       manifest: packageInfo.manifest,
       spriteUrl: packageInfo.spriteUrl,
@@ -235,6 +229,8 @@ function createPetSnapshot() {
   return {
     ok: Boolean(resolvedAnimation.animation),
     errors: resolvedAnimation.animation ? [] : [`No animation for ${petRuntimeState.semanticState}`],
+    warnings: packageInfo.warnings ?? [],
+    source: packageInfo.source ?? null,
     packageDir: packageInfo.packageDir,
     manifest: packageInfo.manifest,
     spriteUrl: packageInfo.spriteUrl,
@@ -309,8 +305,8 @@ function getPrimaryRoamingArea() {
   return {
     x: left,
     y: top,
-    width: Math.max(DEFAULT_WINDOW_SIZE.width, right - left),
-    height: Math.max(DEFAULT_WINDOW_SIZE.height, bottom - top),
+    width: Math.max(PET_MVP_WINDOW_SIZE.width, right - left),
+    height: Math.max(PET_MVP_WINDOW_SIZE.height, bottom - top),
   };
 }
 
@@ -396,7 +392,7 @@ function getCurrentPresenceSnapshot() {
   }
   return {
     ...presenceRuntimeState,
-    dock: createDockedPoint(getPrimaryRoamingArea(), DEFAULT_WINDOW_SIZE),
+    dock: createDockedPoint(getPrimaryRoamingArea(), PET_MVP_WINDOW_SIZE),
   };
 }
 
@@ -944,7 +940,7 @@ function syncWindowToPresenceState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const presenceSnapshot = getCurrentPresenceSnapshot();
   const position = presenceSnapshot.mode === PRESENCE_MODE.WORK
-    ? createDockedPoint(getPrimaryRoamingArea(), DEFAULT_WINDOW_SIZE)
+    ? createDockedPoint(getPrimaryRoamingArea(), PET_MVP_WINDOW_SIZE)
     : roamingRuntimeState;
   if (!position) return;
 
@@ -952,8 +948,8 @@ function syncWindowToPresenceState() {
     {
       x: Math.round(position.x),
       y: Math.round(position.y),
-      width: DEFAULT_WINDOW_SIZE.width,
-      height: DEFAULT_WINDOW_SIZE.height,
+      width: PET_MVP_WINDOW_SIZE.width,
+      height: PET_MVP_WINDOW_SIZE.height,
     },
     false,
   );
@@ -975,6 +971,7 @@ function startRoamingLoop() {
     if (presenceRuntimeState?.mode === PRESENCE_MODE.IDLE) {
       roamingRuntimeState = advanceRoamingState(roamingRuntimeState, {
         workArea: getPrimaryRoamingArea(),
+        windowSize: PET_MVP_WINDOW_SIZE,
         now: Date.now(),
         rng: Math.random,
       });
@@ -1029,6 +1026,7 @@ const createWindow = () => {
   roamingRuntimeState = createInitialRoamingState({
     workArea,
     persistedState: getPersistedRoamingState(),
+    windowSize: PET_MVP_WINDOW_SIZE,
     now,
     rng: Math.random,
   });
@@ -1050,10 +1048,10 @@ const createWindow = () => {
   persistCareState(true);
 
   mainWindow = new BrowserWindow({
-    width: DEFAULT_WINDOW_SIZE.width,
-    height: DEFAULT_WINDOW_SIZE.height,
-    x: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, DEFAULT_WINDOW_SIZE) : roamingRuntimeState).x),
-    y: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, DEFAULT_WINDOW_SIZE) : roamingRuntimeState).y),
+    width: PET_MVP_WINDOW_SIZE.width,
+    height: PET_MVP_WINDOW_SIZE.height,
+    x: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, PET_MVP_WINDOW_SIZE) : roamingRuntimeState).x),
+    y: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, PET_MVP_WINDOW_SIZE) : roamingRuntimeState).y),
     frame: false,
     transparent: true,
     resizable: false,
