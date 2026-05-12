@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell, powerMonitor, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const Store = require('electron-store').default;
 const {
@@ -70,8 +71,14 @@ const {
   resolveAnimationForSemanticState,
 } = require('./shared/pet/petManifest');
 
-const store = new Store();
 const DEV_SERVER_URL = process.env.PAWKIT_VITE_DEV_SERVER_URL || process.env.VITE_DEV_SERVER_URL;
+
+if (DEV_SERVER_URL) {
+  app.setName('Pawkit Dev');
+  app.setPath('userData', path.join(app.getPath('appData'), 'pawkit-dev'));
+}
+
+const store = new Store();
 const DEFAULT_SOUND_VOLUMES = Object.freeze({
   master: 0.7,
   ambient: 0.35,
@@ -92,7 +99,23 @@ const PET_MVP_WINDOW_SIZE = Object.freeze({
   width: 192,
   height: 208,
 });
-const SINGLE_INSTANCE_LOCK_PATH = path.join(app.getPath('temp'), 'pawkit-single-instance.lock');
+const PET_ASSET_PROTOCOL = 'pawkit-pet';
+const petAssetRegistry = new Map();
+let hasRegisteredPetAssetProtocol = false;
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: PET_ASSET_PROTOCOL,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
+const SINGLE_INSTANCE_LOCK_ID = crypto.createHash('sha1').update(`${app.getAppPath()}|${app.getPath('userData')}`).digest('hex').slice(0, 12);
+const SINGLE_INSTANCE_LOCK_PATH = path.join(app.getPath('temp'), `pawkit-single-instance-${SINGLE_INSTANCE_LOCK_ID}.lock`);
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 let ownsProcessLock = false;
 
@@ -156,6 +179,33 @@ function getBuiltInPetsDir() {
   return path.join(getRepoRoot(), 'pets', 'builtin');
 }
 
+function createPetAssetUrl(filePath) {
+  const resolvedPath = path.resolve(filePath);
+  const token = Buffer.from(resolvedPath, 'utf8').toString('base64url');
+  petAssetRegistry.set(token, resolvedPath);
+  return `${PET_ASSET_PROTOCOL}://asset/${token}`;
+}
+
+function registerPetAssetProtocol() {
+  if (hasRegisteredPetAssetProtocol) return;
+  hasRegisteredPetAssetProtocol = true;
+
+  protocol.handle(PET_ASSET_PROTOCOL, (request) => {
+    const url = new URL(request.url);
+    if (url.hostname !== 'asset') {
+      return new Response('Unknown Pawkit pet asset host', { status: 404 });
+    }
+
+    const token = decodeURIComponent(url.pathname.replace(/^\//, ''));
+    const filePath = petAssetRegistry.get(token);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return new Response('Pawkit pet asset not found', { status: 404 });
+    }
+
+    return net.fetch(pathToFileURL(filePath).href);
+  });
+}
+
 function loadActivePetPackage() {
   const candidates = createPetPackageCandidates({
     envDir: process.env.PAWKIT_ACTIVE_PET_DIR,
@@ -182,7 +232,7 @@ function loadActivePetPackage() {
       packageDir: candidate.directory,
       manifest: loaded.manifest,
       spritePath: loaded.spritePath,
-      spriteUrl: pathToFileURL(loaded.spritePath).href,
+      spriteUrl: createPetAssetUrl(loaded.spritePath),
     };
   }
 
@@ -1137,6 +1187,7 @@ const createTray = () => {
 
 app.whenReady().then(() => {
   if (!hasSingleInstanceLock) return;
+  registerPetAssetProtocol();
   recordValidationSession();
   createWindow();
   createTray();
