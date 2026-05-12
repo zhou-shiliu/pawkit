@@ -2,9 +2,25 @@
 
 ## 当前目标
 
-当前仓库已经完成 **M1：桌面存在感 + 最小照料闭环** 与 **M2：双模式存在感**。
+当前仓库正在进行 **Pet MVP Reset**：从原先的 M1/M2/M3 照料型桌面猫路线，收缩为 Codex Pet 风格兼容的桌面宠物播放器。
 
-当前分支的新增目标是 **M3：鲜活感升级 / Lifelike Presence Upgrade**：在 work / idle 边界不回退的前提下，引入有限多姿态与更像猫的状态切换，让用户愿意整天开着观察。
+新的工程目标是：
+
+- 以 `pet.json + spritesheet.webp` 宠物包作为视觉核心。
+- 用 adapter 把外部宠物资源转换为 Pawkit 内部 normalized manifest。
+- 用最少语义状态驱动动画：`idle / working / attention / success / failed / sleepy / movingLeft / movingRight`。
+- 默认体验不展示 Food / Water / Play / Trust 面板、复杂设置页或验证报告。
+- 先让用户快速看到一个动态、可替换、低打扰的桌宠，再决定是否恢复照料系统。
+
+执行前先阅读：
+
+- `docs/PET-MVP-RESET-GOAL.md`
+- `docs/PET-MVP-RESET-ARCHITECTURE.md`
+- `docs/PET-MVP-RESET-TEST-SPEC.md`
+
+## 历史目标
+
+当前仓库已经完成过 **M1：桌面存在感 + 最小照料闭环** 与 **M2：双模式存在感**，并曾推进 **M3：鲜活感升级 / Lifelike Presence Upgrade**。这些能力保留为历史实现和后续增强素材，但不再作为 Reset MVP 的默认产品中心。
 
 ## 当前结构
 
@@ -19,12 +35,12 @@ src/
 │   └── validationMetrics.js 本地验证指标汇总
 └── renderer/
     ├── App.tsx             桌面 UI，按 presence mode 控制提示与微动
-    ├── hooks/              当前已包含 presence / roaming / care hydration；M3 计划在此层新增 visual presence 状态所有者
+    ├── hooks/              当前已包含 presence / roaming / care hydration / visual presence
     ├── systems/
     └── components/
 ```
 
-> 注：M3 计划中的 `visualPresence` 相关 shared / hook / pose 资源仍在实现中；在对应文件真正落地前，不应把它们记为已完成能力。
+> 注：这是 Reset 前的历史结构。Pet MVP Reset 的目标结构以 `docs/PET-MVP-RESET-ARCHITECTURE.md` 为准。
 
 ## 当前能力
 
@@ -53,18 +69,17 @@ src/
 - 工作态提示过滤：非紧急照料提示被抑制，紧急提示保留；闲置态沿用 M1 提示行为。
 - 自动化支持：`PAWKIT_AUTOMATION_IDLE_SECONDS`、`PAWKIT_AUTOMATION_IDLE_SEQUENCE_FILE`、`PAWKIT_AUTOMATION_PRESENCE_OVERRIDE`、`PAWKIT_AUTOMATION_IDLE_THRESHOLD_SECONDS`、`PAWKIT_AUTOMATION_CARE_STATE`。
 
-### M3：鲜活感升级（当前分支目标）
+### M3：鲜活感升级（历史目标）
 
 - 目标不是增加更多功能，而是让桌面猫看起来更像“活着的猫”。
-- 计划新增有限姿态资源、renderer 侧 visual state 规范化、以及 work / idle 差异化状态集合。
-- M3 必须新增独立验证门禁 `verify:m3:livelike`，同时继续通过 `verify:m2:presence` 与 `verify:m1-closure`。
-- 在该门禁与实现真正落地前，仓库当前可运行结论仍以 M2 为准。
+- 已引入 visual presence 相关实现和 `verify:m3:livelike` 门禁。
+- Reset 之后，M3 作为历史经验保留，不再作为当前 MVP 的实现主线。
 
 ## 当前限制
 
 - 桌面窗口仍默认 click-through，交互入口主要是托盘。
 - 最小信任系统已经存在，但仍是轻量版本，不等同于完整关系系统。
-- 当前阶段不包含复杂动机、孤独感、召唤、语音、AI、multi-cat / multi-screen、IK 动画或 sprite 动画系统。
+- 当前 Reset 阶段不包含复杂动机、孤独感、召唤、语音、AI、multi-cat / multi-screen、IK 或骨骼动画系统。
 - M2 第一版只处理主显示器/当前工作区，不做多屏策略。
 
 ## 验证门禁
@@ -77,14 +92,15 @@ npm run build
 npx tsc --noEmit --project tsconfig.json
 npm run verify:m2:presence
 npm run verify:m1-closure
+npm run verify:m3:livelike
 ```
 
-M3 目标门禁（待实现完成后纳入）：
+Pet MVP Reset 目标门禁（待实现完成后纳入）：
 
 ```bash
-npm run verify:m3:livelike
+npm run verify:pet-mvp
 ```
 
 ## 当前结论
 
-当前仓库已经不是“纯漫游 M1”，而是 **M1 基线 + M2 双模式存在感**，并正在朝 **M3 鲜活感升级** 推进。当前应先完成可复验的姿态/视觉状态门禁，再决定是否继续扩展更多体验层。
+当前仓库已经完成过 **M1 基线 + M2 双模式存在感 + M3 鲜活感升级** 的探索。下一步不再继续加功能，而是按 Pet MVP Reset 收缩为宠物包驱动的桌面宠物播放器。
