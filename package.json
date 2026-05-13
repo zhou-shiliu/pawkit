@@ -21,7 +21,8 @@
     "verify:m3:livelike": "node scripts/verify-m3-lifelike-presence.js",
     "verify:pet-mvp": "node scripts/verify-pet-mvp.js",
     "dev:web": "vite --strictPort --port 5173",
-    "dev:legacy": "VITE_PAWKIT_LEGACY_CARE=1 vite --strictPort --port 5173"
+    "dev:legacy": "VITE_PAWKIT_LEGACY_CARE=1 vite --strictPort --port 5173",
+    "verify:pet-dialog": "node scripts/assert-pet-import-dialog.js"
   },
   "keywords": [
     "desktop",

@@ -577,15 +577,26 @@ async function importPetPackageFromPath(sourcePath, options = {}) {
   };
 }
 
-async function importPetPackageFromDialog() {
-  const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
+function createPetImportDialogOptions() {
+  return {
     title: '导入宠物包',
+    message: '选择一个 Codex Pet zip 包或已解压的宠物目录',
     properties: ['openFile', 'openDirectory'],
     filters: [
       { name: 'Codex Pet Package', extensions: ['zip'] },
       { name: 'All Files', extensions: ['*'] },
     ],
-  });
+  };
+}
+
+function showCenteredPetImportDialog() {
+  // Do not parent this dialog to the tiny transparent pet window. Native dialogs
+  // attached to that window inherit the pet's lower-right placement on macOS.
+  return dialog.showOpenDialog(createPetImportDialogOptions());
+}
+
+async function importPetPackageFromDialog() {
+  const result = await showCenteredPetImportDialog();
 
   if (result.canceled || !result.filePaths?.[0]) {
     return {
