@@ -3,7 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
-const Store = require('electron-store').default;
+const ElectronStore = require('electron-store');
+const LegacyStore = ElectronStore.default ?? ElectronStore;
 const {
   advanceRoamingState,
   createInitialRoamingState,
@@ -88,10 +89,18 @@ const DEV_SERVER_URL = process.env.PAWKIT_VITE_DEV_SERVER_URL || process.env.VIT
 
 if (DEV_SERVER_URL) {
   app.setName('Pawkit Dev');
+}
+
+const AUTOMATION_USER_DATA_DIR = String(process.env.PAWKIT_AUTOMATION_USER_DATA_DIR || '').trim();
+if (AUTOMATION_USER_DATA_DIR) {
+  app.setPath('userData', path.resolve(AUTOMATION_USER_DATA_DIR));
+} else if (DEV_SERVER_URL) {
   app.setPath('userData', path.join(app.getPath('appData'), 'pawkit-dev'));
 }
 
-const store = new Store();
+const PET_PLACEMENT_STORE_KEY = 'pet.placement';
+const PET_ACTIVE_PACKAGE_STORE_KEY = 'pet.activePackageDir';
+const store = createAppStore();
 const DEFAULT_SOUND_VOLUMES = Object.freeze({
   master: 0.7,
   ambient: 0.35,
@@ -112,12 +121,29 @@ const PET_DEFAULT_WINDOW_SIZE = Object.freeze({
   width: 192,
   height: 208,
 });
-const PET_PLACEMENT_STORE_KEY = 'pet.placement';
-const PET_ACTIVE_PACKAGE_STORE_KEY = 'pet.activePackageDir';
 const PET_PLACEMENT_PADDING = 0;
 const PET_ASSET_PROTOCOL = 'pawkit-pet';
 const petAssetRegistry = new Map();
 let hasRegisteredPetAssetProtocol = false;
+
+
+function createAppStore() {
+  const appStore = new ElectronStore({ cwd: app.getPath('userData') });
+
+  try {
+    const legacyStore = new LegacyStore();
+
+    for (const key of ['pet', 'cat', 'sound', 'validation']) {
+      if (!appStore.has(key) && legacyStore.has(key)) {
+        appStore.set(key, legacyStore.get(key));
+      }
+    }
+  } catch {
+    // Legacy migration is best-effort; the app can still use the new store.
+  }
+
+  return appStore;
+}
 
 protocol.registerSchemesAsPrivileged([
   {
