@@ -9,12 +9,15 @@ assert.match(mainSource, /function createCenteredImportDialogHost\(\)/);
 assert.match(mainSource, /screen\.getPrimaryDisplay\(\)/);
 assert.match(mainSource, /primaryDisplay\.workArea\.x \+ \(primaryDisplay\.workArea\.width - hostSize\.width\) \/ 2/);
 assert.match(mainSource, /primaryDisplay\.workArea\.y \+ primaryDisplay\.workArea\.height \/ 2/);
-assert.match(mainSource, /dialog\.showOpenDialog\(hostWindow, createPetImportDialogOptions\(\)\)/);
+assert.match(mainSource, /hostWindow\.show\(\)/);
+assert.match(mainSource, /hostWindow\.focus\(\)/);
+assert.match(mainSource, /hostWindow\.hide\(\)/);
+assert.match(mainSource, /dialog\.showOpenDialog\(createPetImportDialogOptions\(\)\)/);
 assert.doesNotMatch(mainSource, /dialog\.showOpenDialog\(mainWindow/);
-assert.doesNotMatch(mainSource, /dialog\.showOpenDialog\(createPetImportDialogOptions\(\)\)/);
+assert.doesNotMatch(mainSource, /dialog\.showOpenDialog\(hostWindow/);
 assert.match(mainSource, /shouldRestorePetWindow/);
 
 console.log(JSON.stringify({
   ok: true,
-  checked: 'pet import dialog uses a centered temporary host window',
+  checked: 'pet import dialog is independent and preceded by a centered activator',
 }, null, 2));

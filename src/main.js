@@ -626,16 +626,20 @@ function createCenteredImportDialogHost() {
 }
 
 async function showCenteredPetImportDialog() {
-  // Native file dialogs are positioned relative to their parent window on macOS.
-  // The pet window is intentionally tiny and draggable, so use a temporary
-  // centered host instead of mainWindow to keep import UX screen-centered.
+  // Native macOS sheets attached to a parent window are not draggable. Use a
+  // temporary centered activator to move focus away from the pet, then open an
+  // independent dialog without a parent so the user can still move it.
   const hostWindow = createCenteredImportDialogHost();
   const shouldRestorePetWindow = Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible());
 
   try {
-    hostWindow.showInactive();
+    hostWindow.show();
     hostWindow.focus();
-    return await dialog.showOpenDialog(hostWindow, createPetImportDialogOptions());
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    if (!hostWindow.isDestroyed()) {
+      hostWindow.hide();
+    }
+    return await dialog.showOpenDialog(createPetImportDialogOptions());
   } finally {
     if (!hostWindow.isDestroyed()) {
       hostWindow.close();
