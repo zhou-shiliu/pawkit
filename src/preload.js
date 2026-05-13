@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listPets: () => ipcRenderer.invoke('pet:list'),
   setActivePet: (packageDir) => ipcRenderer.invoke('pet:set-active', packageDir),
   importPet: (sourcePath) => ipcRenderer.invoke('pet:import', sourcePath),
+  choosePetImportSource: (sourceType) => ipcRenderer.invoke('pet:choose-import-source', sourceType),
+  closePetImportPanel: () => ipcRenderer.invoke('pet:close-import-panel'),
   resetPetPlacement: () => ipcRenderer.invoke('pet:reset-placement'),
   showPet: () => ipcRenderer.invoke('pet:show'),
   hidePet: () => ipcRenderer.invoke('pet:hide'),

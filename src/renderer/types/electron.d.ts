@@ -137,6 +137,8 @@ interface ElectronAPI {
   listPets: () => Promise<PetPackagePayload[]>;
   setActivePet: (packageDir: string) => Promise<PetActivationResultPayload>;
   importPet: (sourcePath?: string) => Promise<PetImportResultPayload>;
+  choosePetImportSource: (sourceType: 'zip' | 'directory') => Promise<PetImportResultPayload>;
+  closePetImportPanel: () => Promise<PetStatePayload>;
   resetPetPlacement: () => Promise<PetPlacementPayload>;
   showPet: () => Promise<PetStatePayload>;
   hidePet: () => Promise<PetStatePayload>;

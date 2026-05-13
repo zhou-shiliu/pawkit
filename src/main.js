@@ -577,92 +577,117 @@ async function importPetPackageFromPath(sourcePath, options = {}) {
   };
 }
 
-function createPetImportDialogOptions() {
+function createPetImportDialogOptions(sourceType = 'any') {
+  const safeType = sourceType === 'zip' || sourceType === 'directory' ? sourceType : 'any';
+  const properties = safeType === 'zip'
+    ? ['openFile']
+    : safeType === 'directory'
+      ? ['openDirectory']
+      : ['openFile', 'openDirectory'];
+
   return {
     title: '导入宠物包',
-    message: '选择一个 Codex Pet zip 包或已解压的宠物目录',
-    properties: ['openFile', 'openDirectory'],
-    filters: [
-      { name: 'Codex Pet Package', extensions: ['zip'] },
-      { name: 'All Files', extensions: ['*'] },
-    ],
+    message: safeType === 'directory'
+      ? '选择已解压的 Codex Pet 宠物目录'
+      : '选择 Codex Pet zip 包或已解压的宠物目录',
+    properties,
+    filters: safeType === 'directory'
+      ? []
+      : [
+          { name: 'Codex Pet Package', extensions: ['zip'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
   };
 }
 
-function createCenteredImportDialogHost() {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const hostSize = { width: 720, height: 1 };
-  const x = Math.round(primaryDisplay.workArea.x + (primaryDisplay.workArea.width - hostSize.width) / 2);
-  const y = Math.round(primaryDisplay.workArea.y + primaryDisplay.workArea.height / 2);
-
-  const hostWindow = new BrowserWindow({
-    x,
-    y,
-    width: hostSize.width,
-    height: hostSize.height,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    movable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    skipTaskbar: true,
-    show: false,
-    alwaysOnTop: true,
-    focusable: true,
-    title: 'Pawkit Import Pet',
-    backgroundColor: '#00000000',
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
-
-  hostWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  hostWindow.setBounds({ x, y, width: hostSize.width, height: hostSize.height }, false);
-  return hostWindow;
-}
-
-async function showCenteredPetImportDialog() {
-  // Native macOS sheets attached to a parent window are not draggable. Use a
-  // temporary centered activator to move focus away from the pet, then open an
-  // independent dialog without a parent so the user can still move it.
-  const hostWindow = createCenteredImportDialogHost();
-  const shouldRestorePetWindow = Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible());
-
-  try {
-    hostWindow.show();
-    hostWindow.focus();
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    if (!hostWindow.isDestroyed()) {
-      hostWindow.hide();
-    }
-    return await dialog.showOpenDialog(createPetImportDialogOptions());
-  } finally {
-    if (!hostWindow.isDestroyed()) {
-      hostWindow.close();
-    }
-    if (shouldRestorePetWindow) {
-      showPetWindow();
-    }
-  }
-}
-
-async function importPetPackageFromDialog() {
-  const result = await showCenteredPetImportDialog();
+async function choosePetImportSource(sourceType = 'any') {
+  const result = await dialog.showOpenDialog(createPetImportDialogOptions(sourceType));
 
   if (result.canceled || !result.filePaths?.[0]) {
     return {
       ok: false,
       cancelled: true,
       errors: [],
+      imported: null,
       active: createPetSnapshot(),
     };
   }
 
   return importPetPackageFromPath(result.filePaths[0]);
+}
+
+function getImportWindowBounds() {
+  const display = screen.getPrimaryDisplay();
+  const size = { width: 420, height: 280 };
+  return {
+    ...size,
+    x: Math.round(display.workArea.x + (display.workArea.width - size.width) / 2),
+    y: Math.round(display.workArea.y + (display.workArea.height - size.height) / 2),
+  };
+}
+
+function loadImportWindowRenderer(window) {
+  if (DEV_SERVER_URL) {
+    const url = new URL(DEV_SERVER_URL);
+    url.searchParams.set('view', 'pet-import');
+    return window.loadURL(url.toString());
+  }
+
+  const distPath = path.join(__dirname, '..', 'dist', 'renderer', 'index.html');
+  if (!fs.existsSync(distPath)) {
+    throw new Error(`Missing renderer build output at ${distPath}. Run "npm run build" before opening pet import panel.`);
+  }
+  return window.loadFile(distPath, { query: { view: 'pet-import' } });
+}
+
+function openPetImportWindow() {
+  if (importWindow && !importWindow.isDestroyed()) {
+    const bounds = getImportWindowBounds();
+    importWindow.setBounds(bounds, false);
+    importWindow.show();
+    importWindow.focus();
+    return;
+  }
+
+  const bounds = getImportWindowBounds();
+  importWindow = new BrowserWindow({
+    ...bounds,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    title: '导入宠物包',
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  importWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  importWindow.once('ready-to-show', () => {
+    importWindow?.show();
+    importWindow?.focus();
+  });
+  importWindow.on('closed', () => {
+    importWindow = null;
+  });
+  loadImportWindowRenderer(importWindow).catch((error) => {
+    console.error('Failed to load pet import panel:', error);
+    if (importWindow && !importWindow.isDestroyed()) {
+      importWindow.close();
+    }
+  });
+}
+
+async function importPetPackageFromDialog() {
+  return choosePetImportSource('any');
 }
 
 function createPetSnapshot() {
@@ -706,6 +731,7 @@ function sendPetStateUpdate() {
 }
 
 let mainWindow = null;
+let importWindow = null;
 let tray = null;
 let roamingRuntimeState = null;
 let roamingInterval = null;
@@ -1073,7 +1099,7 @@ function rebuildTrayMenu() {
       onShow: showPetWindow,
       onHide: hidePetWindow,
       onResetPlacement: resetPetPlacement,
-      onImportPet: () => void importPetPackageFromDialog(),
+      onImportPet: openPetImportWindow,
       onSetActivePet: (packageDir) => setActivePetPackage(packageDir),
       onQuit: () => app.quit(),
     },
@@ -1690,7 +1716,24 @@ ipcMain.handle('pet:set-active', (_event, packageDir) => setActivePetPackage(pac
 
 ipcMain.handle('pet:import', async (_event, sourcePath) => {
   if (sourcePath) return importPetPackageFromPath(sourcePath);
-  return importPetPackageFromDialog();
+  openPetImportWindow();
+  return {
+    ok: false,
+    cancelled: true,
+    errors: [],
+    imported: null,
+    active: createPetSnapshot(),
+  };
+});
+
+ipcMain.handle('pet:choose-import-source', async (_event, sourceType) => choosePetImportSource(sourceType));
+
+ipcMain.handle('pet:close-import-panel', (event) => {
+  const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+  if (sourceWindow && !sourceWindow.isDestroyed()) {
+    sourceWindow.close();
+  }
+  return createPetSnapshot();
 });
 
 ipcMain.handle('pet:reset-placement', () => resetPetPlacement());

@@ -56,3 +56,115 @@
   pointer-events: auto;
 }
 
+
+.importDesktop {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  background: transparent;
+  pointer-events: auto;
+  -webkit-app-region: drag;
+}
+
+.importPanel {
+  width: 100%;
+  min-height: 240px;
+  padding: 18px;
+  border: 1px solid rgba(54, 110, 106, 0.2);
+  border-radius: 22px;
+  background: rgba(248, 255, 252, 0.96);
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(20, 64, 64, 0.18);
+  color: rgba(18, 48, 45, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-app-region: drag;
+}
+
+.importHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.importEyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(37, 131, 116, 0.7);
+}
+
+.importTitle {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.importCloseButton,
+.importPrimaryButton,
+.importSecondaryButton {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.importCloseButton {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: rgba(24, 65, 60, 0.72);
+  background: rgba(28, 95, 86, 0.08);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.importMessage {
+  min-height: 40px;
+  margin: 18px 0 16px;
+  color: rgba(24, 65, 60, 0.76);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.importActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.importPrimaryButton,
+.importSecondaryButton {
+  min-height: 42px;
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+.importPrimaryButton {
+  color: white;
+  background: linear-gradient(135deg, #1ab69d, #128675);
+  box-shadow: 0 10px 24px rgba(18, 134, 117, 0.24);
+}
+
+.importSecondaryButton {
+  color: rgba(18, 97, 85, 0.92);
+  background: rgba(18, 134, 117, 0.1);
+}
+
+.importPrimaryButton:disabled,
+.importSecondaryButton:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.importHint {
+  margin: 14px 0 0;
+  color: rgba(24, 65, 60, 0.54);
+  font-size: 12px;
+  line-height: 1.35;
+}

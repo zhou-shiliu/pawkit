@@ -3,21 +3,32 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const mainSource = fs.readFileSync(path.join(process.cwd(), 'src', 'main.js'), 'utf8');
+const appSource = fs.readFileSync(path.join(process.cwd(), 'src', 'renderer', 'App.tsx'), 'utf8');
+const panelSource = fs.readFileSync(path.join(process.cwd(), 'src', 'renderer', 'pet', 'PetImportPanel.tsx'), 'utf8');
+const cssSource = fs.readFileSync(path.join(process.cwd(), 'src', 'renderer', 'pet', 'PetStage.module.css'), 'utf8');
 
-assert.match(mainSource, /function createPetImportDialogOptions\(\)/);
-assert.match(mainSource, /function createCenteredImportDialogHost\(\)/);
-assert.match(mainSource, /screen\.getPrimaryDisplay\(\)/);
-assert.match(mainSource, /primaryDisplay\.workArea\.x \+ \(primaryDisplay\.workArea\.width - hostSize\.width\) \/ 2/);
-assert.match(mainSource, /primaryDisplay\.workArea\.y \+ primaryDisplay\.workArea\.height \/ 2/);
-assert.match(mainSource, /hostWindow\.show\(\)/);
-assert.match(mainSource, /hostWindow\.focus\(\)/);
-assert.match(mainSource, /hostWindow\.hide\(\)/);
-assert.match(mainSource, /dialog\.showOpenDialog\(createPetImportDialogOptions\(\)\)/);
+assert.match(mainSource, /function openPetImportWindow\(\)/);
+assert.match(mainSource, /function getImportWindowBounds\(\)/);
+assert.match(mainSource, /width: 420, height: 280/);
+assert.match(mainSource, /url\.searchParams\.set\('view', 'pet-import'\)/);
+assert.match(mainSource, /ipcMain\.handle\('pet:choose-import-source'/);
+assert.match(mainSource, /ipcMain\.handle\('pet:close-import-panel'/);
+assert.match(mainSource, /onImportPet: openPetImportWindow/);
+assert.doesNotMatch(mainSource, /createCenteredImportDialogHost/);
+assert.doesNotMatch(mainSource, /hostWindow\.show/);
 assert.doesNotMatch(mainSource, /dialog\.showOpenDialog\(mainWindow/);
 assert.doesNotMatch(mainSource, /dialog\.showOpenDialog\(hostWindow/);
-assert.match(mainSource, /shouldRestorePetWindow/);
+
+assert.match(appSource, /view'\) === 'pet-import'/);
+assert.match(appSource, /<PetImportPanel \/>/);
+assert.match(panelSource, /chooseSource\('zip'\)/);
+assert.match(panelSource, /chooseSource\('directory'\)/);
+assert.match(panelSource, /closePetImportPanel/);
+assert.match(cssSource, /\.importPanel/);
+assert.match(cssSource, /-webkit-app-region: drag/);
+assert.match(cssSource, /-webkit-app-region: no-drag/);
 
 console.log(JSON.stringify({
   ok: true,
-  checked: 'pet import dialog is independent and preceded by a centered activator',
+  checked: 'pet import uses a first-class centered Pawkit panel without hidden host line',
 }, null, 2));

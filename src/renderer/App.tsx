@@ -6,6 +6,7 @@ import { usePresenceState } from './hooks/usePresenceState';
 import { useVisualPresenceState } from './hooks/useVisualPresenceState';
 import { MoodText } from './components/MoodText/MoodText';
 import { PetStage } from './pet/PetStage';
+import { PetImportPanel } from './pet/PetImportPanel';
 import { clampPercent, getCarePrompt } from './systems/catBehavior';
 import styles from './App.module.css';
 
@@ -80,6 +81,10 @@ function getVisualShadowStyle(visualState: string): CSSProperties {
 }
 
 export default function App() {
+  if (new URLSearchParams(window.location.search).get('view') === 'pet-import') {
+    return <PetImportPanel />;
+  }
+
   if (!ENABLE_LEGACY_CARE_PREVIEW) {
     return <PetStage />;
   }
