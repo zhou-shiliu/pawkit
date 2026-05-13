@@ -589,10 +589,61 @@ function createPetImportDialogOptions() {
   };
 }
 
-function showCenteredPetImportDialog() {
-  // Do not parent this dialog to the tiny transparent pet window. Native dialogs
-  // attached to that window inherit the pet's lower-right placement on macOS.
-  return dialog.showOpenDialog(createPetImportDialogOptions());
+function createCenteredImportDialogHost() {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const hostSize = { width: 720, height: 1 };
+  const x = Math.round(primaryDisplay.workArea.x + (primaryDisplay.workArea.width - hostSize.width) / 2);
+  const y = Math.round(primaryDisplay.workArea.y + primaryDisplay.workArea.height / 2);
+
+  const hostWindow = new BrowserWindow({
+    x,
+    y,
+    width: hostSize.width,
+    height: hostSize.height,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    show: false,
+    alwaysOnTop: true,
+    focusable: true,
+    title: 'Pawkit Import Pet',
+    backgroundColor: '#00000000',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  hostWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  hostWindow.setBounds({ x, y, width: hostSize.width, height: hostSize.height }, false);
+  return hostWindow;
+}
+
+async function showCenteredPetImportDialog() {
+  // Native file dialogs are positioned relative to their parent window on macOS.
+  // The pet window is intentionally tiny and draggable, so use a temporary
+  // centered host instead of mainWindow to keep import UX screen-centered.
+  const hostWindow = createCenteredImportDialogHost();
+  const shouldRestorePetWindow = Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible());
+
+  try {
+    hostWindow.showInactive();
+    hostWindow.focus();
+    return await dialog.showOpenDialog(hostWindow, createPetImportDialogOptions());
+  } finally {
+    if (!hostWindow.isDestroyed()) {
+      hostWindow.close();
+    }
+    if (shouldRestorePetWindow) {
+      showPetWindow();
+    }
+  }
 }
 
 async function importPetPackageFromDialog() {
