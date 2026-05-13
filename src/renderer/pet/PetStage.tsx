@@ -24,6 +24,11 @@ export function PetStage() {
   const dragSessionRef = useRef<DragSession | null>(null);
   const { loading, petState, sendPetEvent } = usePetRuntime();
 
+  const handleDoubleClick = useCallback(() => {
+    dragSessionRef.current = null;
+    void sendPetEvent('taskSuccess');
+  }, [sendPetEvent]);
+
   const handlePointerDown = useCallback((event: PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
 
@@ -119,6 +124,7 @@ export function PetStage() {
         className={styles.petButton}
         type="button"
         onPointerCancel={handlePointerCancel}
+        onDoubleClick={handleDoubleClick}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
