@@ -33,6 +33,13 @@ const {
   createPetPackageCandidates,
   findPetPackageDirs,
 } = require('../src/shared/pet/packageDiscovery');
+const {
+  createPetMvpTrayMenuTemplate,
+} = require('../src/shared/pet/petMvpTrayMenu');
+const {
+  importPetPackage,
+  listPetPackages,
+} = require('../src/shared/pet/petLibrary');
 
 function createRawManifest(overrides = {}) {
   return {
@@ -64,7 +71,7 @@ test('animation names normalize Codex Pet aliases', () => {
   assert.equal(normalizeAnimationName('idle'), CANONICAL_ANIMATION.IDLE);
   assert.equal(normalizeAnimationName('wave'), CANONICAL_ANIMATION.WAVING);
   assert.equal(normalizeAnimationName('jump'), CANONICAL_ANIMATION.JUMPING);
-  assert.equal(normalizeAnimationName('run'), CANONICAL_ANIMATION.RUNNING_RIGHT);
+  assert.equal(normalizeAnimationName('run'), CANONICAL_ANIMATION.RUNNING);
   assert.equal(normalizeAnimationName('running'), CANONICAL_ANIMATION.RUNNING);
   assert.equal(normalizeAnimationName('run left'), CANONICAL_ANIMATION.RUNNING_LEFT);
   assert.equal(normalizeAnimationName('runLeft'), CANONICAL_ANIMATION.RUNNING_LEFT);
@@ -250,4 +257,89 @@ test('drag threshold and overlay expansion are deterministic', () => {
     expandBounds({ x: 100, y: 100, width: 192, height: 208 }, { top: 40, right: 20, bottom: 8, left: 12 }),
     { x: 88, y: 60, width: 224, height: 256 },
   );
+});
+
+
+test('working semantic state prefers review before running fallback', () => {
+  const reviewManifest = createNormalizedPetManifest(createRawManifest({
+    animations: {
+      idle: { row: 0, frames: 8, fps: 8, loop: true },
+      review: { row: 8, frames: 8, fps: 8, loop: true },
+      running: { row: 7, frames: 8, fps: 12, loop: true },
+    },
+  }));
+  const runningManifest = createNormalizedPetManifest(createRawManifest({
+    animations: {
+      idle: { row: 0, frames: 8, fps: 8, loop: true },
+      running: { row: 7, frames: 8, fps: 12, loop: true },
+    },
+  }));
+
+  assert.equal(resolveAnimationForSemanticState(reviewManifest, PET_SEMANTIC_STATE.WORKING).animationName, CANONICAL_ANIMATION.REVIEW);
+  assert.equal(resolveAnimationForSemanticState(runningManifest, PET_SEMANTIC_STATE.WORKING).animationName, CANONICAL_ANIMATION.RUNNING);
+});
+
+test('pet package discovery includes imported packages before community and builtin', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pawkit-pet-roots-'));
+  const importedDir = path.join(tempDir, 'imported');
+  const communityDir = path.join(tempDir, 'community');
+  const builtInDir = path.join(tempDir, 'builtin');
+  for (const [root, id] of [[importedDir, 'imported-pet'], [communityDir, 'community-pet'], [builtInDir, 'builtin-pet']]) {
+    const petDir = path.join(root, id);
+    fs.mkdirSync(petDir, { recursive: true });
+    fs.writeFileSync(path.join(petDir, 'pet.json'), JSON.stringify(createRawManifest({ id })), 'utf8');
+    fs.writeFileSync(path.join(petDir, 'spritesheet.webp'), 'placeholder');
+  }
+
+  const candidates = createPetPackageCandidates({ importedDir, communityDir, builtInDir });
+  assert.deepEqual(candidates.map((candidate) => candidate.source), ['imported', 'community', 'builtin']);
+});
+
+test('pet library imports directories and zips into user pet root', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pawkit-pet-library-'));
+  const sourceDir = path.join(tempDir, 'source-pet');
+  const importedRoot = path.join(tempDir, 'imported');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'pet.json'), JSON.stringify(createRawManifest({ id: 'source-pet' })), 'utf8');
+  fs.writeFileSync(path.join(sourceDir, 'spritesheet.webp'), 'placeholder');
+
+  const importedDirectory = await importPetPackage(sourceDir, importedRoot);
+  assert.equal(importedDirectory.ok, true);
+  assert.equal(loadPetPackage(importedDirectory.packageDir).ok, true);
+
+  const zip = new JSZip();
+  zip.file('zip-pet/pet.json', JSON.stringify(createRawManifest({ id: 'zip-pet' })));
+  zip.file('zip-pet/spritesheet.webp', 'placeholder');
+  const zipPath = path.join(tempDir, 'zip-pet.zip');
+  fs.writeFileSync(zipPath, await zip.generateAsync({ type: 'nodebuffer' }));
+
+  const importedZip = await importPetPackage(zipPath, importedRoot);
+  assert.equal(importedZip.ok, true);
+  assert.equal(loadPetPackage(importedZip.packageDir).ok, true);
+
+  const packages = listPetPackages([{ source: 'imported', directory: importedRoot }], {
+    activePackageDir: importedZip.packageDir,
+  });
+  assert.equal(packages.length, 2);
+  assert.equal(packages.find((petPackage) => petPackage.packageDir === importedZip.packageDir).active, true);
+});
+
+test('pet mvp tray menu excludes old care and presence controls', () => {
+  const template = createPetMvpTrayMenuTemplate({
+    activePetName: 'Sprout',
+    packages: [
+      {
+        ok: true,
+        active: true,
+        packageDir: '/tmp/sprout',
+        manifest: { name: 'Sprout' },
+      },
+    ],
+  });
+  const labels = JSON.stringify(template.map((item) => item.label || item.type || ''));
+
+  assert.match(labels, /当前宠物：Sprout/);
+  assert.match(labels, /导入宠物包/);
+  assert.match(labels, /切换宠物/);
+  assert.doesNotMatch(labels, /Food|Water|Play|Trust|模式控制|闲置阈值|验证报告|食物状态|饮水状态/);
 });
