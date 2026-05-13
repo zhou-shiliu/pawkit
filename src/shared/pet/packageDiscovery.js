@@ -34,6 +34,12 @@ function createPetPackageCandidates(options = {}) {
     candidates.push({ source: 'persisted', directory: persistedDir, required: false });
   }
 
+  for (const directory of findPetPackageDirs(options.importedDir, options)) {
+    if (!candidates.some((candidate) => candidate.directory === directory)) {
+      candidates.push({ source: 'imported', directory, required: false });
+    }
+  }
+
   for (const directory of findPetPackageDirs(options.communityDir, options)) {
     if (!candidates.some((candidate) => candidate.directory === directory)) {
       candidates.push({ source: 'community', directory, required: false });

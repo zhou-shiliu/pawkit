@@ -81,6 +81,34 @@ export interface PetDragPointPayload {
   screenY: number;
 }
 
+
+export interface PetPackagePayload {
+  ok: boolean;
+  errors: string[];
+  source: string;
+  packageDir: string;
+  active: boolean;
+  manifest: PetManifestPayload | null;
+  spritePath: string | null;
+}
+
+export interface PetImportResultPayload {
+  ok: boolean;
+  cancelled?: boolean;
+  errors: string[];
+  imported: {
+    packageDir: string;
+    manifest: PetManifestPayload | null;
+  } | null;
+  active: PetStatePayload;
+}
+
+export interface PetActivationResultPayload {
+  ok: boolean;
+  errors: string[];
+  active: PetStatePayload;
+}
+
 export interface PetStatePayload {
   ok: boolean;
   errors: string[];
@@ -106,6 +134,12 @@ interface ElectronAPI {
   getRoamingState: () => Promise<RoamingStatePayload>;
   getPresenceState: () => Promise<PresenceStatePayload>;
   getActivePet: () => Promise<PetStatePayload>;
+  listPets: () => Promise<PetPackagePayload[]>;
+  setActivePet: (packageDir: string) => Promise<PetActivationResultPayload>;
+  importPet: (sourcePath?: string) => Promise<PetImportResultPayload>;
+  resetPetPlacement: () => Promise<PetPlacementPayload>;
+  showPet: () => Promise<PetStatePayload>;
+  hidePet: () => Promise<PetStatePayload>;
   sendPetEvent: (eventName: string) => Promise<PetStatePayload>;
   startPetDrag: (point: PetDragPointPayload) => Promise<PetPlacementPayload>;
   movePetDrag: (point: PetDragPointPayload) => Promise<PetPlacementPayload>;

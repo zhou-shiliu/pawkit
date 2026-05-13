@@ -7,6 +7,7 @@ Pawkit 是一个桌面宠物实验项目。当前产品方向已经从原先的 
 - `docs/PET-MVP-RESET-GOAL.md`
 - `docs/PET-MVP-RESET-ARCHITECTURE.md`
 - `docs/PET-MVP-RESET-TEST-SPEC.md`
+- `docs/PET-MVP-CLOSURE-PLAN.md`
 
 > 旧 M1/M2/M3 能力暂时保留为历史能力和后续增强素材，但不再作为 MVP 默认体验的中心。
 
@@ -45,12 +46,16 @@ Pawkit 是一个桌面宠物实验项目。当前产品方向已经从原先的 
 
 Pet MVP Reset 聚焦“宠物播放器”，而不是继续扩展照料系统。当前文档约束如下：
 
+- 内置原创占位宠物 `Pawkit Sprout`，新环境无需社区资产也能看到宠物。
 - 支持 Codex Pet 风格宠物包：`pet.json + spritesheet.webp`。
 - 通过 adapter 把外部宠物资源转换为 Pawkit 内部 normalized manifest。
 - 用少量语义状态驱动动作：`idle / working / attention / success / failed / sleepy / movingLeft / movingRight`。
+- 支持点击、双击、拖拽方向动作、位置保存/找回。
+- 支持从托盘导入、切换宠物包；导入资产写入用户数据目录，不写入仓库。
+- 默认托盘只保留显示、隐藏、找回/重置位置、导入、切换、退出。
 - 默认界面不展示旧照料面板、复杂设置页或验证报告。
 - `npm run dev` 与 `npm start` 都进入 Pet MVP 桌面宠物入口；旧照料界面仅作为 legacy 预览保留。
-- `verify:pet-mvp` 是 Reset 后的主门禁。
+- `verify:pet-mvp` 是 Reset 后的主门禁；本阶段闭环计划见 `docs/PET-MVP-CLOSURE-PLAN.md`。
 
 ## 历史 M3 目标
 
@@ -86,6 +91,7 @@ npm run dev:legacy # 查看旧照料界面预览
 - Pet MVP Reset 目标：`docs/PET-MVP-RESET-GOAL.md`
 - Pet MVP Reset 架构：`docs/PET-MVP-RESET-ARCHITECTURE.md`
 - Pet MVP Reset 测试规范：`docs/PET-MVP-RESET-TEST-SPEC.md`
+- Pet MVP 闭环计划：`docs/PET-MVP-CLOSURE-PLAN.md`
 - M1 需求：`.omx/plans/prd-presence-first-roaming-m1.md`
 - M1 测试规范：`.omx/plans/test-spec-presence-first-roaming-m1.md`
 - M2 PRD：`docs/M2-PRESENCE-PRD.md`

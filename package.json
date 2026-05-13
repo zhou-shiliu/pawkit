@@ -58,7 +58,8 @@
     "files": [
       "src/**/*",
       "dist/renderer/**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "pets/builtin/**/*"
     ],
     "extraResources": [
       {
