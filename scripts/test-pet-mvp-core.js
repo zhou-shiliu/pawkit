@@ -37,6 +37,10 @@ const {
   createPetMvpTrayMenuTemplate,
 } = require('../src/shared/pet/petMvpTrayMenu');
 const {
+  advanceDragDirectionState,
+  createDragDirectionState,
+} = require('../src/shared/pet/dragDirection');
+const {
   importPetPackage,
   listPetPackages,
 } = require('../src/shared/pet/petLibrary');
@@ -342,4 +346,21 @@ test('pet mvp tray menu excludes old care and presence controls', () => {
   assert.match(labels, /导入宠物包/);
   assert.match(labels, /切换宠物/);
   assert.doesNotMatch(labels, /Food|Water|Play|Trust|模式控制|闲置阈值|验证报告|食物状态|饮水状态/);
+});
+
+test('drag direction follows immediate pointer movement instead of total displacement', () => {
+  let directionState = createDragDirectionState({ screenX: 100, screenY: 0 });
+  let advanced = advanceDragDirectionState(directionState, { screenX: 40, screenY: 0 });
+  assert.equal(advanced.direction, 'left');
+  assert.equal(advanced.changed, true);
+
+  directionState = advanced.state;
+  advanced = advanceDragDirectionState(directionState, { screenX: 55, screenY: 0 });
+  assert.equal(advanced.direction, 'right');
+  assert.equal(advanced.changed, true);
+
+  directionState = advanced.state;
+  advanced = advanceDragDirectionState(directionState, { screenX: 70, screenY: 0 });
+  assert.equal(advanced.direction, 'right');
+  assert.equal(advanced.changed, false);
 });

@@ -76,6 +76,10 @@ const {
   createDefaultPlacement,
   resolvePlacementForDisplays,
 } = require('./shared/pet/placement');
+const {
+  advanceDragDirectionState,
+  createDragDirectionState,
+} = require('./shared/pet/dragDirection');
 
 const DEV_SERVER_URL = process.env.PAWKIT_VITE_DEV_SERVER_URL || process.env.VITE_DEV_SERVER_URL;
 
@@ -345,22 +349,24 @@ function startPetDrag(point) {
   petDragState = {
     startPoint: dragPoint,
     startBounds: mainWindow.getBounds(),
-    lastDirection: null,
+    directionState: createDragDirectionState(dragPoint),
   };
 
   return getCurrentPetPlacement();
 }
 
-function updatePetDragDirection(dx, options = {}) {
-  if (!petDragState || Math.abs(dx) < 1) return;
+function updatePetDragDirection(dragPoint, options = {}) {
+  if (!petDragState) return null;
 
-  const nextDirection = dx < 0 ? 'left' : 'right';
-  if (petDragState.lastDirection === nextDirection) return;
+  const advanced = advanceDragDirectionState(petDragState.directionState, dragPoint);
+  petDragState.directionState = advanced.state;
 
-  petDragState.lastDirection = nextDirection;
-  setPetRuntimeEvent(nextDirection === 'left'
+  if (!advanced.changed) return advanced.direction;
+
+  setPetRuntimeEvent(advanced.direction === 'left'
     ? PET_RUNTIME_EVENT.MOVING_LEFT
     : PET_RUNTIME_EVENT.MOVING_RIGHT, options);
+  return advanced.direction;
 }
 
 function movePetDrag(point, options = {}) {
@@ -373,7 +379,7 @@ function movePetDrag(point, options = {}) {
 
   const dx = dragPoint.screenX - petDragState.startPoint.screenX;
   const dy = dragPoint.screenY - petDragState.startPoint.screenY;
-  updatePetDragDirection(dx, options);
+  updatePetDragDirection(dragPoint, options);
 
   const petSize = getPetWindowSize();
   return applyPetPlacementBounds({
@@ -1323,13 +1329,18 @@ function parseAutomationPetDragDelta() {
   const raw = String(process.env.PAWKIT_AUTOMATION_PET_DRAG_DELTA || '').trim();
   if (!raw) return null;
 
-  const [rawX, rawY] = raw.split(',');
-  const dx = Number(rawX);
-  const dy = Number(rawY);
+  const points = raw
+    .split(';')
+    .map((chunk) => {
+      const [rawX, rawY] = chunk.split(',');
+      const dx = Number(rawX);
+      const dy = Number(rawY);
+      return Number.isFinite(dx) && Number.isFinite(dy) ? { dx, dy } : null;
+    })
+    .filter(Boolean);
 
-  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null;
-
-  return { dx, dy };
+  if (points.length === 0) return null;
+  return points;
 }
 
 function maybeRunAutomationPetDrag() {
@@ -1346,15 +1357,28 @@ function maybeRunAutomationPetDrag() {
       screenX: before.x + before.width / 2,
       screenY: before.y + before.height / 2,
     };
-    const endPoint = {
-      screenX: startPoint.screenX + (delta?.dx ?? 0),
-      screenY: startPoint.screenY + (delta?.dy ?? 0),
-    };
+    const deltas = delta ?? [{ dx: 0, dy: 0 }];
+    const dragSteps = deltas.map((step) => ({
+      screenX: startPoint.screenX + step.dx,
+      screenY: startPoint.screenY + step.dy,
+    }));
 
     startPetDrag(startPoint);
-    const duringPlacement = movePetDrag(endPoint);
+    const dragSnapshots = dragSteps.map((stepPoint, index) => {
+      const stepPlacement = movePetDrag(stepPoint);
+      const stepSnapshot = createPetSnapshot();
+      return {
+        index,
+        delta: deltas[index],
+        placement: stepPlacement,
+        state: stepSnapshot.behavior.semanticState,
+        animation: stepSnapshot.animationName,
+      };
+    });
+    const lastPoint = dragSteps.at(-1) ?? startPoint;
+    const duringPlacement = dragSnapshots.at(-1)?.placement ?? getCurrentPetPlacement();
     const duringDrag = createPetSnapshot();
-    const placement = endPetDrag(endPoint);
+    const placement = endPetDrag(lastPoint);
     const afterDrag = createPetSnapshot();
     const after = mainWindow.getBounds();
 
@@ -1365,9 +1389,10 @@ function maybeRunAutomationPetDrag() {
         statusFile,
         JSON.stringify({
           executedAt: new Date().toISOString(),
-          delta: delta ?? { dx: 0, dy: 0 },
+          delta: deltas,
           before,
           after,
+          dragSnapshots,
           duringPlacement,
           duringDrag: {
             state: duringDrag.behavior.semanticState,
