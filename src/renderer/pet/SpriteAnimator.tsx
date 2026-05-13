@@ -7,6 +7,7 @@ interface SpriteAnimatorProps {
   animationName: string;
   frameHeight: number;
   frameWidth: number;
+  scale?: number;
   spriteUrl: string;
   onOneShotComplete?: () => void;
 }
@@ -22,6 +23,7 @@ export function SpriteAnimator({
   animationName,
   frameHeight,
   frameWidth,
+  scale = 1,
   spriteUrl,
   onOneShotComplete,
 }: SpriteAnimatorProps) {
@@ -53,15 +55,24 @@ export function SpriteAnimator({
   return (
     <div
       aria-hidden="true"
-      className={styles.sprite}
+      className={styles.spriteViewport}
       style={{
-        width: frameWidth,
-        height: frameHeight,
-        backgroundImage: `url("${spriteUrl}")`,
-        backgroundPosition: `-${frameIndex * frameWidth}px -${animation.row * frameHeight}px`,
-        backgroundSize,
+        width: Math.round(frameWidth * scale),
+        height: Math.round(frameHeight * scale),
       }}
-    />
+    >
+      <div
+        className={styles.sprite}
+        style={{
+          width: frameWidth,
+          height: frameHeight,
+          backgroundImage: `url("${spriteUrl}")`,
+          backgroundPosition: `-${frameIndex * frameWidth}px -${animation.row * frameHeight}px`,
+          backgroundSize,
+          transform: `scale(${scale})`,
+        }}
+      />
+    </div>
   );
 }
 

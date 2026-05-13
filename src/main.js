@@ -80,6 +80,9 @@ const {
   advanceDragDirectionState,
   createDragDirectionState,
 } = require('./shared/pet/dragDirection');
+const {
+  calculatePetWindowSize,
+} = require('./shared/pet/petDisplay');
 
 const DEV_SERVER_URL = process.env.PAWKIT_VITE_DEV_SERVER_URL || process.env.VITE_DEV_SERVER_URL;
 
@@ -212,14 +215,7 @@ function getPersistedActivePetDir() {
 
 function getPetWindowSize() {
   const packageInfo = getActivePetPackage();
-  const sprite = packageInfo.manifest?.sprite;
-  const width = Number(sprite?.frameWidth);
-  const height = Number(sprite?.frameHeight);
-
-  return {
-    width: Number.isFinite(width) && width > 0 ? Math.round(width) : PET_DEFAULT_WINDOW_SIZE.width,
-    height: Number.isFinite(height) && height > 0 ? Math.round(height) : PET_DEFAULT_WINDOW_SIZE.height,
-  };
+  return calculatePetWindowSize(packageInfo.manifest?.sprite ?? PET_DEFAULT_WINDOW_SIZE);
 }
 
 function getDisplayDescriptors() {
@@ -763,7 +759,10 @@ let presenceRuntimeState = null;
 let presenceInterval = null;
 let automationIdleSequence = null;
 let automationIdleSequenceIndex = 0;
-let petRuntimeState = createPetBehaviorState({ now: Date.now() });
+let petRuntimeState = createPetBehaviorState({
+  semanticState: process.env.PAWKIT_AUTOMATION_PET_STATE,
+  now: Date.now(),
+});
 let activePetPackage = null;
 let petPlacementState = null;
 let petDragState = null;
@@ -1204,6 +1203,8 @@ function getAutomationRendererSnapshotScript() {
     const panel = document.querySelector('[aria-label="care-status"]');
     const hud = document.querySelector('[aria-label="care-hud"]');
     const pet = document.querySelector('[data-pet-id]');
+    const petButton = document.querySelector('button[aria-label]');
+    const petBubble = document.querySelector('[aria-label="pet-status-bubble"]');
     const toSnapshot = (element) => {
       const rect = element ? element.getBoundingClientRect() : null;
       const style = element ? window.getComputedStyle(element) : null;
@@ -1232,6 +1233,8 @@ function getAutomationRendererSnapshotScript() {
     };
     const careStatus = toSnapshot(panel);
     const petSnapshot = toSnapshot(pet);
+    const petButtonSnapshot = toSnapshot(petButton);
+    const petBubbleSnapshot = toSnapshot(petBubble);
     return {
       presenceMode: root?.getAttribute('data-presence-mode') ?? null,
       visualState: visualStateTarget?.getAttribute('data-visual-state') ?? null,
@@ -1247,6 +1250,8 @@ function getAutomationRendererSnapshotScript() {
         animation: pet?.getAttribute('data-pet-animation') ?? null,
         visible: petSnapshot.visible,
         rect: petSnapshot.rect,
+        button: petButtonSnapshot,
+        bubble: petBubbleSnapshot,
       },
     };
   })()`;

@@ -41,6 +41,9 @@ const {
   createDragDirectionState,
 } = require('../src/shared/pet/dragDirection');
 const {
+  calculatePetWindowSize,
+} = require('../src/shared/pet/petDisplay');
+const {
   importPetPackage,
   listPetPackages,
 } = require('../src/shared/pet/petLibrary');
@@ -326,6 +329,15 @@ test('pet library imports directories and zips into user pet root', async () => 
   });
   assert.equal(packages.length, 2);
   assert.equal(packages.find((petPackage) => petPackage.packageDir === importedZip.packageDir).active, true);
+});
+
+
+test('pet display size is scaled down while preserving Codex sprite frame metadata', () => {
+  const windowSize = calculatePetWindowSize({ frameWidth: 192, frameHeight: 208 });
+
+  assert.deepEqual(windowSize, { width: 160, height: 190 });
+  assert.ok(windowSize.width < 192);
+  assert.ok(windowSize.height < 208);
 });
 
 test('pet mvp tray menu excludes old care and presence controls', () => {

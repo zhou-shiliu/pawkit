@@ -1,9 +1,12 @@
-import { useCallback, useRef, type PointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
+import petDisplayConfig from '../../shared/pet/petDisplayConfig.json';
 import { SpriteAnimator } from './SpriteAnimator';
+import { getPetStatusMessage, getPetStatusMessageDuration, shouldShowPetStatusBubble } from './petStatusBubble';
 import { usePetRuntime } from './usePetRuntime';
 import styles from './PetStage.module.css';
 
 const DRAG_THRESHOLD_PX = 4;
+const PET_RENDER_SCALE = Number(petDisplayConfig.renderScale) || 1;
 
 interface DragSession {
   dragging: boolean;
@@ -23,6 +26,24 @@ export function PetStage() {
   const hasPetApi = Boolean(window.electronAPI?.getActivePet);
   const dragSessionRef = useRef<DragSession | null>(null);
   const { loading, petState, sendPetEvent } = usePetRuntime();
+  const [visibleBubbleMessage, setVisibleBubbleMessage] = useState<string | null>(null);
+  const semanticState = petState?.behavior.semanticState ?? null;
+
+  useEffect(() => {
+    if (!shouldShowPetStatusBubble(semanticState)) {
+      setVisibleBubbleMessage(null);
+      return undefined;
+    }
+
+    const nextMessage = getPetStatusMessage(semanticState);
+    setVisibleBubbleMessage(nextMessage);
+
+    const timerId = window.setTimeout(() => {
+      setVisibleBubbleMessage((current) => (current === nextMessage ? null : current));
+    }, getPetStatusMessageDuration(semanticState));
+
+    return () => window.clearTimeout(timerId);
+  }, [semanticState]);
 
   const handleDoubleClick = useCallback(() => {
     dragSessionRef.current = null;
@@ -116,9 +137,14 @@ export function PetStage() {
     <main
       className={styles.desktop}
       data-pet-id={petState.manifest.id}
-      data-pet-state={petState.behavior.semanticState}
+      data-pet-state={semanticState}
       data-pet-animation={petState.animationName}
     >
+      {visibleBubbleMessage ? (
+        <div className={styles.petSpeechBubble} aria-label="pet-status-bubble" aria-live="polite">
+          {visibleBubbleMessage}
+        </div>
+      ) : null}
       <button
         aria-label={petState.manifest.name}
         className={styles.petButton}
@@ -134,6 +160,7 @@ export function PetStage() {
           animationName={petState.animationName}
           frameHeight={petState.manifest.sprite.frameHeight}
           frameWidth={petState.manifest.sprite.frameWidth}
+          scale={PET_RENDER_SCALE}
           spriteUrl={petState.spriteUrl}
           onOneShotComplete={petState.animation.loop ? undefined : handleOneShotComplete}
         />
