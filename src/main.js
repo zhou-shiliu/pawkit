@@ -600,20 +600,33 @@ function createPetImportDialogOptions(sourceType = 'any') {
   };
 }
 
-async function choosePetImportSource(sourceType = 'any') {
-  const result = await dialog.showOpenDialog(createPetImportDialogOptions(sourceType));
+async function choosePetImportSource(sourceType = 'any', ownerWindow = null) {
+  const shouldRestoreOwner = Boolean(ownerWindow && !ownerWindow.isDestroyed() && ownerWindow.isVisible());
 
-  if (result.canceled || !result.filePaths?.[0]) {
-    return {
-      ok: false,
-      cancelled: true,
-      errors: [],
-      imported: null,
-      active: createPetSnapshot(),
-    };
+  if (shouldRestoreOwner) {
+    ownerWindow.hide();
   }
 
-  return importPetPackageFromPath(result.filePaths[0]);
+  try {
+    const result = await dialog.showOpenDialog(createPetImportDialogOptions(sourceType));
+
+    if (result.canceled || !result.filePaths?.[0]) {
+      return {
+        ok: false,
+        cancelled: true,
+        errors: [],
+        imported: null,
+        active: createPetSnapshot(),
+      };
+    }
+
+    return await importPetPackageFromPath(result.filePaths[0]);
+  } finally {
+    if (shouldRestoreOwner && ownerWindow && !ownerWindow.isDestroyed()) {
+      ownerWindow.show();
+      ownerWindow.focus();
+    }
+  }
 }
 
 function getImportWindowBounds() {
@@ -1726,7 +1739,10 @@ ipcMain.handle('pet:import', async (_event, sourcePath) => {
   };
 });
 
-ipcMain.handle('pet:choose-import-source', async (_event, sourceType) => choosePetImportSource(sourceType));
+ipcMain.handle('pet:choose-import-source', async (event, sourceType) => {
+  const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+  return choosePetImportSource(sourceType, sourceWindow);
+});
 
 ipcMain.handle('pet:close-import-panel', (event) => {
   const sourceWindow = BrowserWindow.fromWebContents(event.sender);
