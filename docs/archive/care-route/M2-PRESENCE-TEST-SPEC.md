@@ -132,7 +132,7 @@ PAWKIT_AUTOMATION_IDLE_SECONDS=600
 
 ## Manual QA
 
-新增 `docs/M2-PRESENCE-QA-CHECKLIST.md`：
+新增 `docs/archive/care-route/M2-PRESENCE-QA-CHECKLIST.md`：
 
 - [ ] 首次启动默认工作态，猫贴边可见。
 - [ ] 工作态猫不横穿屏幕。

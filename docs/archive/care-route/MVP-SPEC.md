@@ -675,7 +675,7 @@
 │       └── system/            # 系统提示音
 ├── src/                       # 源代码
 ├── docs/
-│   └── MVP-SPEC.md            # 本文档
+│   └── MVP-docs/releases/v0.1.0/ENGINEERING.md            # 本文档
 └── README.md
 ```
 

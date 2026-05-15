@@ -2,7 +2,7 @@
 
 ## 架构目标
 
-Pet MVP Reset 的架构目标是把 Pawkit 从“照料系统驱动的桌面猫应用”收缩为“宠物资源驱动的桌面宠物播放器”。
+Pet MVP Reset 的架构目标是把 Pawkit 从“照料系统驱动的桌面猫应用”收缩为“宠物资源驱动的桌面宠物陪伴应用”。
 
 新的核心不再是 care loop、presence mode 或验证报告，而是：
 
@@ -438,7 +438,7 @@ Adapter 还应接受常见别名：
 
 ### Step 4: Desktop Shell 收缩
 
-拆分当前 `src/main.js` 中的窗口、托盘、状态逻辑。首版只保留宠物播放器所需的 shell 能力。
+拆分当前 `src/main.js` 中的窗口、托盘、状态逻辑。首版只保留宠物陪伴应用所需的 shell 能力。
 
 ### Step 5: Placement Controller
 

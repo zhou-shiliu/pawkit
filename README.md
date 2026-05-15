@@ -172,10 +172,11 @@ git diff --check
 ## 项目状态
 
 - 最新版本：以 GitHub Releases 为准
+- 文档索引：`docs/README.md`
 - 主分支：`main`
-- MVP 发布说明：`docs/RELEASE-v0.1.0-MVP.md`
-- MVP 手工 QA：`docs/PET-MVP-QA.md`
-- MVP 架构说明：`docs/PET-MVP-RESET-ARCHITECTURE.md`
+- v0.1.0 发布说明：`docs/releases/v0.1.0/RELEASE.md`
+- v0.1.0 手工 QA：`docs/releases/v0.1.0/QA.md`
+- v0.1.0 架构说明：`docs/releases/v0.1.0/ARCHITECTURE.md`
 
 ## 后续方向
 

@@ -180,7 +180,7 @@ PAWKIT_AUTOMATION_IDLE_SECONDS=600
 
 建议新增：
 
-- `docs/M3-LIVELIKE-QA-CHECKLIST.md`
+- `docs/archive/care-route/M3-LIFELIKE-QA-CHECKLIST.md`
 
 手工检查项应至少包括：
 

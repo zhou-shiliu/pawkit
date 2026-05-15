@@ -12,8 +12,8 @@
 
 证据：
 
-- `docs/M2-PRESENCE-QA-REPORT.md`：M2 自动化结果通过。
-- `docs/M1-MANUAL-QA-REPORT.md`：M1 回归自动化结果通过。
+- `docs/archive/care-route/M2-PRESENCE-QA-REPORT.md`：M2 自动化结果通过。
+- `docs/archive/care-route/M1-MANUAL-QA-REPORT.md`：M1 回归自动化结果通过。
 
 ## 工作态
 

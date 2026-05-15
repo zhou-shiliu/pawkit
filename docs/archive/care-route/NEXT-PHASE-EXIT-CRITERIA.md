@@ -45,7 +45,7 @@
 4. M1 自动化基线通过
    - `npm run verify:m1:manual`
 5. M1 手工验收通过
-   - `docs/M1-MANUAL-QA-CHECKLIST.md` 条目逐项确认
+   - `docs/archive/care-route/M1-MANUAL-QA-CHECKLIST.md` 条目逐项确认
 6. 文档与代码一致
    - README、计划、测试规范、验收清单、退出标准使用同一版 M1 定义
 
@@ -57,7 +57,7 @@ npm run verify:m1-closure
 
 然后再人工执行：
 
-- `docs/M1-MANUAL-QA-CHECKLIST.md`
+- `docs/archive/care-route/M1-MANUAL-QA-CHECKLIST.md`
 
 ## 结论门槛
 

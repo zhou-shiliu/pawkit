@@ -2,7 +2,7 @@
 
 ## 目标一句话
 
-把 Pawkit 收缩为一个 **Codex Pet 风格兼容的桌面宠物播放器**：用户打开应用后，能在 10 秒内看到一个动态、可替换、低打扰的桌面宠物。
+把 Pawkit 收缩为一个 **Codex Pet 风格兼容的桌面宠物陪伴应用**：用户打开应用后，能在 10 秒内看到一个动态、可替换、低打扰的桌面宠物。
 
 ## 为什么重置
 
@@ -121,9 +121,9 @@ Pet MVP Reset 完成时，必须满足：
 
 后续实现前，先阅读：
 
-1. `docs/PET-MVP-RESET-GOAL.md`
-2. `docs/PET-MVP-RESET-ARCHITECTURE.md`
-3. `docs/PET-MVP-RESET-TEST-SPEC.md`
+1. `docs/releases/v0.1.0/GOAL.md`
+2. `docs/releases/v0.1.0/ARCHITECTURE.md`
+3. `docs/releases/v0.1.0/TEST-docs/releases/v0.1.0/ENGINEERING.md`
 
 任何新增功能都必须回答：
 

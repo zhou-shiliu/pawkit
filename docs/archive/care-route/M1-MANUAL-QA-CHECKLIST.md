@@ -5,7 +5,7 @@
 ## 自动化证据
 
 - 自动化脚本：`npm run verify:m1:manual`
-- 自动化报告：`docs/M1-MANUAL-QA-REPORT.md`
+- 自动化报告：`docs/archive/care-route/M1-MANUAL-QA-REPORT.md`
 
 自动化只能证明基线功能存在，不能替代人工观察与交互确认。
 
@@ -68,7 +68,7 @@
 
 ## 备注
 
-- 在本清单与 `docs/NEXT-PHASE-EXIT-CRITERIA.md` 同时满足之前，不应宣称 M1 已完成。
+- 在本清单与 `docs/archive/care-route/NEXT-PHASE-EXIT-CRITERIA.md` 同时满足之前，不应宣称 M1 已完成。
 
 ## 验收记录
 

@@ -1,12 +1,12 @@
 # Pawkit v0.1.0 MVP 发布说明
 
-发布日期：待定  
-候选分支：`codex/pet-mvp-reset-runtime`  
-目标标签：`v0.1.0-mvp`
+发布日期：2026-05-15
+发布分支：`main`
+目标标签：`v0.1.0`
 
 ## 版本定位
 
-`v0.1.0-mvp` 是 Pawkit 的 Pet MVP Reset 收口版本。这个版本不再以旧照料系统为中心，而是聚焦为一个 **Codex Pet 兼容桌面宠物播放器**。
+`v0.1.0` 是 Pawkit 的 Pet MVP Reset 收口版本。这个版本不再以旧照料系统为中心，而是聚焦为一个 **Codex Pet 兼容桌面宠物陪伴应用**。
 
 核心目标：
 
@@ -68,32 +68,31 @@
 
 手工 QA：
 
-- 清单见 `docs/PET-MVP-QA.md`
+- 清单见 `docs/releases/v0.1.0/QA.md`
 - 发布前需要完成手工 QA 结论填写
 
 ## 已知限制
 
-- 当前主要面向本地开发者试用，还不是面向公众下载安装的正式发行版。
+- 当前安装包未做正式代码签名 / macOS 公证，首次打开可能出现系统安全提示。
 - 宠物包格式以 Codex Pet 风格为主，非标准包可能需要整理后导入。
 - 头顶提示是轻量固定文案，暂不支持自定义。
 - 没有复杂设置页，行为参数主要由代码内 MVP 配置控制。
 - legacy 照料能力仍留在代码中，但不作为当前默认体验。
 
-## 合并与发布建议
+## 发布流程
 
-1. 在 `codex/pet-mvp-reset-runtime` 完成文档、验证和手工 QA。
-2. 合并到 `main`。
-3. 在 `main` 打标签：
+1. 在 `main` 完成文档、验证和手工 QA。
+2. 在 `main` 打标签：
 
    ```bash
-   git tag v0.1.0-mvp
+   git tag v0.1.0
    ```
 
-4. 推送分支和标签：
+3. 推送分支和标签：
 
    ```bash
    git push origin main
-   git push origin v0.1.0-mvp
+   git push origin v0.1.0
    ```
 
 ## 下一阶段建议

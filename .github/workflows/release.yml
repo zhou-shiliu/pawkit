@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build, for example v0.1.0-mvp'
+        description: 'Release tag to build, for example v0.1.0'
         required: true
         type: string
 
@@ -21,7 +21,13 @@ jobs:
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
+      release_body: ${{ steps.meta.outputs.release_body }}
     steps:
+      - name: Checkout release docs
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
       - name: Resolve release tag
         id: meta
         shell: bash
@@ -33,6 +39,14 @@ jobs:
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
+          RELEASE_BODY="docs/releases/${TAG}/RELEASE.md"
+          if [[ ! -f "$RELEASE_BODY" && -f "docs/RELEASE-v0.1.0-MVP.md" ]]; then
+            RELEASE_BODY="docs/RELEASE-v0.1.0-MVP.md"
+          fi
+          if [[ ! -f "$RELEASE_BODY" ]]; then
+            RELEASE_BODY="docs/releases/v0.1.0/RELEASE.md"
+          fi
+          echo "release_body=${RELEASE_BODY}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.name }} package
@@ -119,7 +133,7 @@ jobs:
         with:
           tag_name: ${{ needs.release-info.outputs.tag }}
           name: Pawkit ${{ needs.release-info.outputs.tag }}
-          body_path: docs/RELEASE-v0.1.0-MVP.md
+          body_path: ${{ needs.release-info.outputs.release_body }}
           prerelease: ${{ needs.release-info.outputs.prerelease }}
           files: release-artifacts/**/*
         env:

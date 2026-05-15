@@ -172,10 +172,11 @@ git diff --check
 ## Project Status
 
 - Latest version: see GitHub Releases
+- Documentation index: `docs/README.md`
 - Main branch: `main`
-- MVP release notes: `docs/RELEASE-v0.1.0-MVP.md`
-- MVP manual QA: `docs/PET-MVP-QA.md`
-- MVP architecture notes: `docs/PET-MVP-RESET-ARCHITECTURE.md`
+- v0.1.0 release notes: `docs/releases/v0.1.0/RELEASE.md`
+- v0.1.0 manual QA: `docs/releases/v0.1.0/QA.md`
+- v0.1.0 architecture notes: `docs/releases/v0.1.0/ARCHITECTURE.md`
 
 ## What comes next?
 

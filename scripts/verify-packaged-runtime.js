@@ -2,12 +2,21 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const appAsarPath =
-  process.env.PAWKIT_APP_ASAR_PATH ||
-  path.join(process.cwd(), 'dist', 'mac-arm64', 'Pawkit.app', 'Contents', 'Resources', 'app.asar');
+const candidateAppAsarPaths = [
+  process.env.PAWKIT_APP_ASAR_PATH,
+  path.join(process.cwd(), 'release', 'mac-arm64', 'Pawkit.app', 'Contents', 'Resources', 'app.asar'),
+  path.join(process.cwd(), 'release', 'mac', 'Pawkit.app', 'Contents', 'Resources', 'app.asar'),
+  path.join(process.cwd(), 'dist', 'mac-arm64', 'Pawkit.app', 'Contents', 'Resources', 'app.asar'),
+  path.join(process.cwd(), 'dist', 'mac', 'Pawkit.app', 'Contents', 'Resources', 'app.asar'),
+].filter(Boolean);
 
-if (!fs.existsSync(appAsarPath)) {
-  console.error(`Missing packaged asar at: ${appAsarPath}`);
+const appAsarPath = candidateAppAsarPaths.find((candidatePath) => fs.existsSync(candidatePath));
+
+if (!appAsarPath) {
+  console.error('Missing packaged asar. Checked:');
+  for (const candidatePath of candidateAppAsarPaths) {
+    console.error(`- ${candidatePath}`);
+  }
   console.error('Run `npm run pack` first or set PAWKIT_APP_ASAR_PATH.');
   process.exit(1);
 }

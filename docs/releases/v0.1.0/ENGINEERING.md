@@ -2,7 +2,7 @@
 
 ## 当前目标
 
-当前仓库正在进行 **Pet MVP Reset**：从原先的 M1/M2/M3 照料型桌面猫路线，收缩为 Codex Pet 风格兼容的桌面宠物播放器。
+当前仓库正在进行 **Pet MVP Reset**：从原先的 M1/M2/M3 照料型桌面猫路线，收缩为 Codex Pet 风格兼容的桌面宠物陪伴应用。
 
 新的工程目标是：
 
@@ -14,9 +14,9 @@
 
 执行前先阅读：
 
-- `docs/PET-MVP-RESET-GOAL.md`
-- `docs/PET-MVP-RESET-ARCHITECTURE.md`
-- `docs/PET-MVP-RESET-TEST-SPEC.md`
+- `docs/releases/v0.1.0/GOAL.md`
+- `docs/releases/v0.1.0/ARCHITECTURE.md`
+- `docs/releases/v0.1.0/TEST-docs/releases/v0.1.0/ENGINEERING.md`
 
 ## 历史目标
 
@@ -40,7 +40,7 @@ src/
     └── components/
 ```
 
-> 注：这是 Reset 前的历史结构。Pet MVP Reset 的目标结构以 `docs/PET-MVP-RESET-ARCHITECTURE.md` 为准。
+> 注：这是 Reset 前的历史结构。Pet MVP Reset 的目标结构以 `docs/releases/v0.1.0/ARCHITECTURE.md` 为准。
 
 ## 当前能力
 
@@ -103,4 +103,4 @@ npm run verify:pet-mvp
 
 ## 当前结论
 
-当前仓库已经完成过 **M1 基线 + M2 双模式存在感 + M3 鲜活感升级** 的探索。下一步不再继续加功能，而是按 Pet MVP Reset 收缩为宠物包驱动的桌面宠物播放器。
+当前仓库已经完成过 **M1 基线 + M2 双模式存在感 + M3 鲜活感升级** 的探索。下一步不再继续加功能，而是按 Pet MVP Reset 收缩为宠物包驱动的桌面宠物陪伴应用。

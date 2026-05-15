@@ -1,7 +1,7 @@
 # Pawkit Pet MVP 手工 QA 清单
 
-目标版本：`v0.1.0-mvp`  
-目标分支：`codex/pet-mvp-reset-runtime`  
+目标版本：`v0.1.0`
+目标分支：`main`
 最后更新：2026-05-15
 
 ## QA 目标
@@ -141,4 +141,4 @@ git diff --check
 | 显示/隐藏/找回 | 已测 |  |
 | 异常宠物包 | 已测 |  |
 
-最终结论：手工 QA 通过，Pawkit Pet MVP 可作为 `v0.1.0-mvp` 候选版本合并到 `main`。
+最终结论：手工 QA 通过，Pawkit Pet MVP 可作为 `v0.1.0` 候选版本合并到 `main`。

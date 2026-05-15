@@ -38,11 +38,11 @@
 适合本 lane 维护的文件：
 
 - `README.md`
-- `SPEC.md`
-- `docs/M3-LIFELIKE-PRD.md`
-- `docs/M3-LIFELIKE-TEST-SPEC.md`
-- `docs/M3-LIFELIKE-QA-CHECKLIST.md`
-- `docs/M3-LIFELIKE-REVIEW-NOTES.md`
+- `docs/releases/v0.1.0/ENGINEERING.md`
+- `docs/archive/care-route/M3-LIFELIKE-PRD.md`
+- `docs/archive/care-route/M3-LIFELIKE-TEST-SPEC.md`
+- `docs/archive/care-route/M3-LIFELIKE-QA-CHECKLIST.md`
+- `docs/archive/care-route/M3-LIFELIKE-REVIEW-NOTES.md`
 
 本 lane 避免直接改动的共享实现面：
 
