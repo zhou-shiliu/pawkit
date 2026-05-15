@@ -2,11 +2,9 @@
 
 English | [简体中文](README.md)
 
-A lightweight desktop pet player compatible with Codex Pet-style packages. Put a tiny animated companion on your desktop, drag it around, swap its appearance, and let it quietly stay with you while you work.
+A lightweight desktop pet companion compatible with Codex Pet-style packages. Put a tiny animated companion on your desktop, drag it around, swap its appearance, and let it quietly stay with you while you work.
 
-> Current version: `v0.1.0-mvp`
->
-> Positioning: a Codex Pet-compatible desktop pet player
+> Positioning: a Codex Pet-compatible desktop pet companion
 
 ## Why Pawkit?
 
@@ -19,7 +17,7 @@ Many desktop pet apps quickly become complicated care simulators, settings panel
 - It remembers your last selected pet after restart.
 - It stays lightweight and avoids interrupting your work.
 
-Pawkit is meant to feel like a small companion on your desktop, not another task manager.
+Pawkit is not trying to be a “pet player” in the mechanical sense. It is meant to feel like a small companion on your desktop: present, animated, and gentle, without stealing your attention.
 
 ## Core Features
 
@@ -54,7 +52,7 @@ For states like clicking, moving, working, or failing, Pawkit can show a short m
 
 ## Download
 
-If you only want to use Pawkit, you do not need to download the source code. Download the package for your system from GitHub Releases:
+If you only want to use Pawkit, you do not need to download the source code. GitHub Releases is the source of truth for the latest version; download the package for your system there:
 
 - macOS: `.dmg` or `.zip`
 - Windows: `.exe` installer or portable build
@@ -147,15 +145,14 @@ Supported standard animation names include:
 
 If a pet package does not explicitly define animations, Pawkit fills in default row mappings based on common Codex Pet atlas conventions.
 
-## What is not included yet?
+## What is not included for now?
 
-`v0.1.0-mvp` focuses on the pet-player experience. It does not include:
+Pawkit currently focuses on the lightweight desktop companion experience. It does not include:
 
 - AI chat
 - Voice interaction
 - Complex settings pages
 - Advanced multi-display controls
-- Public installer release flow
 - Complex virtual-pet stats systems
 - Default care HUD
 
@@ -174,7 +171,7 @@ git diff --check
 
 ## Project Status
 
-- Current version: `v0.1.0-mvp`
+- Latest version: see GitHub Releases
 - Main branch: `main`
 - MVP release notes: `docs/RELEASE-v0.1.0-MVP.md`
 - MVP manual QA: `docs/PET-MVP-QA.md`

@@ -1,7 +1,7 @@
 {
   "name": "pawkit",
   "version": "0.1.0",
-  "description": "A lightweight Codex Pet-compatible desktop pet player",
+  "description": "A lightweight Codex Pet-compatible desktop pet companion",
   "main": "src/main.js",
   "scripts": {
     "start": "npm run build && electron .",
@@ -31,7 +31,9 @@
     "desktop",
     "pet",
     "cat",
-    "pixel-art"
+    "pixel-art",
+    "companion",
+    "codex-pet"
   ],
   "author": "zenus",
   "license": "MIT",
