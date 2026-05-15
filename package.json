@@ -1,6 +1,6 @@
 {
   "name": "pawkit",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Pixel art desktop cat pet",
   "main": "src/main.js",
   "scripts": {
