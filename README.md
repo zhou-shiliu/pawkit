@@ -1,95 +1,187 @@
 # Pawkit
 
-Pawkit 是一个桌面宠物实验项目。当前产品方向已经从原先的 **M1/M2/M3 照料型桌面猫** 收缩为 **Pet MVP Reset**：优先做一个 Codex Pet 风格兼容的桌面宠物播放器，让用户先快速体验一个动态、可替换、低打扰的桌宠。
+Pawkit 是一个 **Codex Pet 兼容桌面宠物播放器**。当前版本已经收缩为 v0.1.0 MVP：先把“启动就能看到一个动态、可替换、低打扰的桌面宠物”这件事做完整，而不是继续扩展旧照料系统。
 
-新的目标契约见：
+> 当前 MVP 定义：能启动、能动、能拖、能导入/切换宠物、能记住选择，并保持轻量存在感。
 
-- `docs/PET-MVP-RESET-GOAL.md`
-- `docs/PET-MVP-RESET-ARCHITECTURE.md`
-- `docs/PET-MVP-RESET-TEST-SPEC.md`
+## 当前 MVP 能力
 
-> 旧 M1/M2/M3 能力暂时保留为历史能力和后续增强素材，但不再作为 MVP 默认体验的中心。
+- 启动 Electron 后显示桌面宠物。
+- 内置原创占位宠物 `Pawkit Sprout`，没有外部资产也能运行。
+- 兼容 Codex Pet 风格宠物包：`pet.json + spritesheet.webp`。
+- 支持从托盘导入 `.zip` 宠物包或已解压目录。
+- 支持从托盘切换宠物包。
+- 记住上次选择的宠物，重启后自动恢复。
+- 支持鼠标拖拽宠物到屏幕任意位置。
+- 拖拽时根据即时移动方向展示 `running-left` / `running-right`。
+- 支持位置保存与“找回 / 重置位置”。
+- 支持轻量状态动作映射：
+  - app started → `idle`
+  - user active → `working`
+  - click pet → `attention / waving`
+  - task success → `success`
+  - task failed → `failed`
+  - long inactive → `sleepy`
+  - drag left/right → `movingLeft / movingRight`
+- 支持短暂头顶状态提示，让宠物有轻微反馈但不常驻打扰。
+- 默认托盘只保留 MVP 必需操作：显示、隐藏、找回/重置位置、导入、切换、退出。
 
-## 历史能力
+## 不在当前 MVP 范围内
 
-### M1 基线：桌面存在感 + 最小照料闭环
+以下能力暂时保留为历史探索或后续版本素材，不进入 v0.1.0 默认体验：
 
-1. 桌面存在感
-   - 启动自动出现
-   - 自主漫游
-   - 屏幕边界限制
-   - 重启后位置恢复
-   - 静态猫咪主视觉与按需提示常驻可见
-2. 最小照料闭环
-   - `Food / Water / Play / Trust` 状态存在且会衰减
-   - 菜单栏/托盘支持 `Feed / Give water / Pet`
-   - 状态变化会持久化并回显到界面
+- 复杂照料面板
+- Food / Water / Play / Trust 默认 HUD
+- 复杂设置页
+- AI 聊天
+- 语音 / 音频互动
+- 多屏高级策略
+- 公开发布准备流程
+- 大规模动画系统重构
 
-### M2：双模式存在感
+旧照料界面仍可通过 legacy 预览查看，但不是当前 MVP 主入口。
 
-- 工作态：默认活跃时进入，猫咪贴主显示器边缘，不横穿工作区，只保留轻微呼吸/浮动微动。
-- 闲置态：达到闲置阈值后恢复 M1 漫游。
-- 恢复活动：自动从闲置态回到工作态并重新贴边。
-- 闲置阈值：默认 `10 分钟`，托盘可选 `10 分钟 / 30 分钟 / 1 小时`。
-- 模式控制：托盘可选 `自动 / 强制工作态 / 强制闲置态`。
-- 提示策略：工作态抑制非紧急照料气泡，紧急需求仍可轻量提示；闲置态保持 M1 提示行为。
-
-## 历史验证方式
-
-- 所有验证数据都只保存在本地，不接第三方统计。
-- 应用会记录需求提示出现、菜单栏打开、喂食/加水/陪玩动作，以及从提示出现到首次响应的大致耗时。
-- 可以直接通过菜单栏里的 `打开验证报告` 查看当前本地摘要。
-- M2 自动化验证会覆盖默认工作态、闲置漫游、同进程 idle→work 恢复、阈值持久化、手动覆盖和工作态提示过滤。
-
-## Pet MVP Reset 目标
-
-Pet MVP Reset 聚焦“宠物播放器”，而不是继续扩展照料系统。当前文档约束如下：
-
-- 支持 Codex Pet 风格宠物包：`pet.json + spritesheet.webp`。
-- 通过 adapter 把外部宠物资源转换为 Pawkit 内部 normalized manifest。
-- 用少量语义状态驱动动作：`idle / working / attention / success / failed / sleepy / movingLeft / movingRight`。
-- 默认界面不展示旧照料面板、复杂设置页或验证报告。
-- 计划新增 `verify:pet-mvp` 作为 Reset 后的主门禁。
-
-## 历史 M3 目标
-
-M3 曾聚焦 **鲜活感 / 生命感升级**，而不是继续功能膨胀。历史文档约束如下：
-
-- 在 M2 work / idle 边界上增加有限多姿态视觉资源与状态切换。
-- 先解决“看起来不像活着的猫”的核心问题，而不是扩展语音、AI、多屏或复杂设置。
-- 独立的 `verify:m3:livelike` 验证门禁用于保护当时的 M3 目标。
-- Reset 之后，M3 作为历史经验保留，不再作为当前 MVP 的实现主线。
-
-## 常用命令
+## 快速开始
 
 ```bash
 npm install
-npm test
-npm run build
-npx tsc --noEmit --project tsconfig.json
-npm run verify:runtime
-npm run verify:m1:manual
-npm run verify:m1-closure
-npm run verify:m2:presence
-npm run verify:m3:livelike
-# Pet MVP Reset gate planned: npm run verify:pet-mvp
-npm run electron:dev
+npm run dev
 ```
 
-## 参考文档
+`npm run dev` 会启动 Vite 渲染进程和 Electron 桌面宠物窗口。
 
-- 产品愿景：`docs/MVP-SPEC.md`
-- 验证方案：`docs/VALIDATION-PLAN.md`
-- Pet MVP Reset 目标：`docs/PET-MVP-RESET-GOAL.md`
-- Pet MVP Reset 架构：`docs/PET-MVP-RESET-ARCHITECTURE.md`
-- Pet MVP Reset 测试规范：`docs/PET-MVP-RESET-TEST-SPEC.md`
-- M1 需求：`.omx/plans/prd-presence-first-roaming-m1.md`
-- M1 测试规范：`.omx/plans/test-spec-presence-first-roaming-m1.md`
-- M2 PRD：`docs/M2-PRESENCE-PRD.md`
-- M2 测试规范：`docs/M2-PRESENCE-TEST-SPEC.md`
-- M2 手工 QA：`docs/M2-PRESENCE-QA-CHECKLIST.md`
-- M3 PRD：`docs/M3-LIFELIKE-PRD.md`
-- M3 测试规范：`docs/M3-LIFELIKE-TEST-SPEC.md`
-- M3 手工 QA：`docs/M3-LIFELIKE-QA-CHECKLIST.md`
-- M3 审查备注：`docs/M3-LIFELIKE-REVIEW-NOTES.md`
-- M1 收口标准：`docs/NEXT-PHASE-EXIT-CRITERIA.md`
+生产模式本地启动：
+
+```bash
+npm start
+```
+
+仅网页预览：
+
+```bash
+npm run dev:web
+```
+
+旧照料界面预览：
+
+```bash
+npm run dev:legacy
+```
+
+## 使用方式
+
+### 拖拽宠物
+
+用鼠标按住宠物并移动即可拖拽。宠物会根据当前移动方向切换左右奔跑动作。
+
+### 点击宠物
+
+单击宠物会触发轻量关注反馈。
+
+### 双击宠物
+
+双击宠物会触发成功反馈动作。
+
+### 导入宠物包
+
+从系统托盘菜单选择：
+
+```text
+导入宠物包…
+```
+
+支持两种导入方式：
+
+- 选择 `.zip` 宠物包
+- 选择已解压的宠物目录
+
+导入后的宠物资产会复制到用户数据目录，不写入仓库。
+
+### 切换宠物
+
+从系统托盘菜单选择：
+
+```text
+切换宠物
+```
+
+选择后会立即生效，并在下次启动时恢复该宠物。
+
+### 找回宠物
+
+如果宠物被拖到不方便的位置，可以从托盘选择：
+
+```text
+找回 / 重置位置
+```
+
+## 宠物包格式
+
+当前 MVP 兼容 Codex Pet 风格资源。一个最小宠物包应包含：
+
+```text
+pet.json
+spritesheet.webp
+```
+
+示例 `pet.json`：
+
+```json
+{
+  "id": "example-pet",
+  "displayName": "Example Pet",
+  "description": "A tiny companion.",
+  "spritesheetPath": "spritesheet.webp"
+}
+```
+
+如果宠物包没有显式声明动画，Pawkit 会按 Codex Pet 常见 atlas 约定补齐默认行映射。支持的标准动作名包括：
+
+- `idle`
+- `waiting`
+- `waving` / `wave`
+- `jumping` / `jump`
+- `failed` / `fail`
+- `running` / `run`
+- `running-left` / `run left`
+- `running-right` / `run right`
+- `review`
+
+## 验证命令
+
+MVP 收口建议至少运行：
+
+```bash
+npm test
+npm run verify:pet-mvp
+npm run verify:pet-dialog
+npx tsc --noEmit --project tsconfig.json
+npm run build
+```
+
+完整本地检查可补充：
+
+```bash
+git diff --check
+```
+
+## 当前发版候选
+
+- 目标版本：`v0.1.0-mvp`
+- 候选分支：`codex/pet-mvp-reset-runtime`
+- 主线合并建议：文档与 QA 收口完成后合并到 `main`
+- 发布说明：`docs/RELEASE-v0.1.0-MVP.md`
+- 手工 QA：`docs/PET-MVP-QA.md`
+
+## 关键文档
+
+- MVP 目标：`docs/PET-MVP-RESET-GOAL.md`
+- MVP 架构：`docs/PET-MVP-RESET-ARCHITECTURE.md`
+- MVP 测试规范：`docs/PET-MVP-RESET-TEST-SPEC.md`
+- MVP 闭环计划：`docs/PET-MVP-CLOSURE-PLAN.md`
+- MVP 手工 QA：`docs/PET-MVP-QA.md`
+- v0.1.0 发布说明：`docs/RELEASE-v0.1.0-MVP.md`
+
+## 历史说明
+
+Pawkit 早期做过 M1/M2/M3 照料型桌面猫探索，包括漫游、照料状态、双模式存在感、视觉生命感升级等。Reset 后，这些内容不再作为 MVP 默认体验中心，但相关文档仍保留在 `docs/` 中，作为后续设计素材。

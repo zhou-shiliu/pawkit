@@ -1,0 +1,22 @@
+{
+  "id": "pawkit-sprout",
+  "displayName": "Pawkit Sprout",
+  "description": "Original built-in MVP pet for validating the Codex Pet compatible player.",
+  "version": "1.0.0",
+  "sprite": {
+    "src": "spritesheet.webp",
+    "frameWidth": 192,
+    "frameHeight": 208
+  },
+  "animations": {
+    "idle": { "row": 0, "frames": 6, "fps": 8, "loop": true },
+    "running-right": { "row": 1, "frames": 8, "fps": 12, "loop": true },
+    "running-left": { "row": 2, "frames": 8, "fps": 12, "loop": true },
+    "waving": { "row": 3, "frames": 6, "fps": 10, "loop": false },
+    "jumping": { "row": 4, "frames": 6, "fps": 10, "loop": false },
+    "failed": { "row": 5, "frames": 6, "fps": 8, "loop": false },
+    "waiting": { "row": 6, "frames": 6, "fps": 8, "loop": true },
+    "running": { "row": 7, "frames": 8, "fps": 12, "loop": true },
+    "review": { "row": 8, "frames": 6, "fps": 8, "loop": true }
+  }
+}

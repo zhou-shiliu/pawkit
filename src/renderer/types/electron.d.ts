@@ -42,10 +42,110 @@ export interface RoamingStatePayload {
   lastUpdatedAt: number;
 }
 
+export interface PetAnimationPayload {
+  row: number;
+  frames: number;
+  fps: number;
+  loop: boolean;
+  durationsMs?: number[];
+}
+
+export interface PetManifestPayload {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  sprite: {
+    src: string;
+    frameWidth: number;
+    frameHeight: number;
+  };
+  animations: Record<string, PetAnimationPayload>;
+}
+
+
+export interface PetPlacementPayload {
+  displayId: string | number | null;
+  anchor: string;
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  scaleFactor: number;
+}
+
+export interface PetDragPointPayload {
+  screenX: number;
+  screenY: number;
+}
+
+
+export interface PetPackagePayload {
+  ok: boolean;
+  errors: string[];
+  source: string;
+  packageDir: string;
+  active: boolean;
+  manifest: PetManifestPayload | null;
+  spritePath: string | null;
+}
+
+export interface PetImportResultPayload {
+  ok: boolean;
+  cancelled?: boolean;
+  errors: string[];
+  imported: {
+    packageDir: string;
+    manifest: PetManifestPayload | null;
+  } | null;
+  active: PetStatePayload;
+}
+
+export interface PetActivationResultPayload {
+  ok: boolean;
+  errors: string[];
+  active: PetStatePayload;
+}
+
+export interface PetStatePayload {
+  ok: boolean;
+  errors: string[];
+  warnings?: string[];
+  source?: string | null;
+  packageDir: string | null;
+  manifest: PetManifestPayload | null;
+  spriteUrl: string | null;
+  placement?: PetPlacementPayload;
+  behavior: {
+    semanticState: string;
+    lastStableState: string;
+    lastEvent: string;
+    oneShot: boolean;
+    updatedAt: number;
+  };
+  animationName: string | null;
+  animation: PetAnimationPayload | null;
+}
+
 interface ElectronAPI {
   getCatState: () => Promise<CatStatePayload>;
   getRoamingState: () => Promise<RoamingStatePayload>;
   getPresenceState: () => Promise<PresenceStatePayload>;
+  getActivePet: () => Promise<PetStatePayload>;
+  listPets: () => Promise<PetPackagePayload[]>;
+  setActivePet: (packageDir: string) => Promise<PetActivationResultPayload>;
+  importPet: (sourcePath?: string) => Promise<PetImportResultPayload>;
+  choosePetImportSource: (sourceType: 'zip' | 'directory') => Promise<PetImportResultPayload>;
+  closePetImportPanel: () => Promise<PetStatePayload>;
+  resetPetPlacement: () => Promise<PetPlacementPayload>;
+  showPet: () => Promise<PetStatePayload>;
+  hidePet: () => Promise<PetStatePayload>;
+  sendPetEvent: (eventName: string) => Promise<PetStatePayload>;
+  startPetDrag: (point: PetDragPointPayload) => Promise<PetPlacementPayload>;
+  movePetDrag: (point: PetDragPointPayload) => Promise<PetPlacementPayload>;
+  endPetDrag: (point: PetDragPointPayload) => Promise<PetPlacementPayload>;
   feedCat: () => Promise<{ hunger: number; lastFed: number | null }>;
   waterCat: () => Promise<{ hydration: number; lastWatered: number | null }>;
   petCat: () => Promise<{ happiness: number; trustLevel: number; lastPet: number | null }>;
@@ -59,6 +159,9 @@ interface ElectronAPI {
   ) => void | (() => void);
   onPresenceStateUpdated: (
     callback: (state: PresenceStatePayload) => void,
+  ) => void | (() => void);
+  onPetStateUpdated: (
+    callback: (state: PetStatePayload) => void,
   ) => void | (() => void);
   onFeedCat: (callback: () => void) => void | (() => void);
   onWaterCat: (callback: () => void) => void | (() => void);

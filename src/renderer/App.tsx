@@ -5,12 +5,15 @@ import { useRoamingCatState } from './hooks/useRoamingCatState';
 import { usePresenceState } from './hooks/usePresenceState';
 import { useVisualPresenceState } from './hooks/useVisualPresenceState';
 import { MoodText } from './components/MoodText/MoodText';
+import { PetStage } from './pet/PetStage';
+import { PetImportPanel } from './pet/PetImportPanel';
 import { clampPercent, getCarePrompt } from './systems/catBehavior';
 import styles from './App.module.css';
 
 const FEEDBACK_DURATION_MS = 2400;
 const GENTLE_PROMPT_THRESHOLD = 35;
 const URGENT_PROMPT_THRESHOLD = 20;
+const ENABLE_LEGACY_CARE_PREVIEW = import.meta.env.VITE_PAWKIT_LEGACY_CARE === '1';
 
 function shouldShowCarePromptInMode(
   mode: 'work' | 'idle',
@@ -78,6 +81,14 @@ function getVisualShadowStyle(visualState: string): CSSProperties {
 }
 
 export default function App() {
+  if (new URLSearchParams(window.location.search).get('view') === 'pet-import') {
+    return <PetImportPanel />;
+  }
+
+  if (!ENABLE_LEGACY_CARE_PREVIEW) {
+    return <PetStage />;
+  }
+
   const roamingState = useRoamingCatState();
   const { catState } = useCatState();
   const presenceState = usePresenceState();

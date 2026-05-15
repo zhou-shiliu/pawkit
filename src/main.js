@@ -1,9 +1,11 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, powerMonitor, protocol, net, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const Store = require('electron-store').default;
+const crypto = require('crypto');
+const { pathToFileURL } = require('url');
+const ElectronStore = require('electron-store');
+const LegacyStore = ElectronStore.default ?? ElectronStore;
 const {
-  DEFAULT_WINDOW_SIZE,
   advanceRoamingState,
   createInitialRoamingState,
   toPersistedRoamingState,
@@ -12,13 +14,11 @@ const {
 const {
   DEFAULT_IDLE_THRESHOLD_SECONDS,
   IDLE_STATE,
-  IDLE_THRESHOLD_OPTIONS,
   PRESENCE_MODE,
   PRESENCE_OVERRIDE,
   PRESENCE_TICK_MS,
   createDockedPoint,
   createInitialPresenceState,
-  formatIdleThresholdLabel,
   normalizeIdleState,
   normalizeIdleThresholdSeconds,
   normalizePresenceOverride,
@@ -38,10 +38,6 @@ const {
   toPersistedCareState,
 } = require('./shared/careLoop');
 const {
-  getCareActionLabel,
-  getPrimaryCareNeedPresentation,
-} = require('./shared/carePresentation');
-const {
   createEmptyValidationState,
   normalizeValidationState,
   getNeedKeyFromPresentation,
@@ -55,9 +51,56 @@ const {
   recordPresenceThresholdChange,
   createValidationArtifacts,
 } = require('./shared/validationMetrics');
+const {
+  loadPetPackage,
+} = require('./shared/pet/codexPetAdapter');
+const {
+  createPetPackageCandidates,
+} = require('./shared/pet/packageDiscovery');
+const {
+  importPetPackage,
+  listPetPackages,
+} = require('./shared/pet/petLibrary');
+const {
+  createPetMvpTrayMenuTemplate,
+} = require('./shared/pet/petMvpTrayMenu');
+const {
+  PET_RUNTIME_EVENT,
+  createPetBehaviorState,
+  reducePetBehaviorState,
+} = require('./shared/pet/behaviorController');
+const {
+  resolveAnimationForSemanticState,
+} = require('./shared/pet/petManifest');
+const {
+  clampRectToWorkArea,
+  createDefaultPlacement,
+  resolvePlacementForDisplays,
+} = require('./shared/pet/placement');
+const {
+  advanceDragDirectionState,
+  createDragDirectionState,
+} = require('./shared/pet/dragDirection');
+const {
+  calculatePetWindowSize,
+} = require('./shared/pet/petDisplay');
 
-const store = new Store();
 const DEV_SERVER_URL = process.env.PAWKIT_VITE_DEV_SERVER_URL || process.env.VITE_DEV_SERVER_URL;
+
+if (DEV_SERVER_URL) {
+  app.setName('Pawkit Dev');
+}
+
+const AUTOMATION_USER_DATA_DIR = String(process.env.PAWKIT_AUTOMATION_USER_DATA_DIR || '').trim();
+if (AUTOMATION_USER_DATA_DIR) {
+  app.setPath('userData', path.resolve(AUTOMATION_USER_DATA_DIR));
+} else if (DEV_SERVER_URL) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'pawkit-dev'));
+}
+
+const PET_PLACEMENT_STORE_KEY = 'pet.placement';
+const PET_ACTIVE_PACKAGE_STORE_KEY = 'pet.activePackageDir';
+const store = createAppStore();
 const DEFAULT_SOUND_VOLUMES = Object.freeze({
   master: 0.7,
   ambient: 0.35,
@@ -74,7 +117,47 @@ const ROAMING_EDGE_INSET = Object.freeze({
   top: 12,
   bottom: 28,
 });
-const SINGLE_INSTANCE_LOCK_PATH = path.join(app.getPath('temp'), 'pawkit-single-instance.lock');
+const PET_DEFAULT_WINDOW_SIZE = Object.freeze({
+  width: 192,
+  height: 208,
+});
+const PET_PLACEMENT_PADDING = 0;
+const PET_ASSET_PROTOCOL = 'pawkit-pet';
+const petAssetRegistry = new Map();
+let hasRegisteredPetAssetProtocol = false;
+
+
+function createAppStore() {
+  const appStore = new ElectronStore({ cwd: app.getPath('userData') });
+
+  try {
+    const legacyStore = new LegacyStore();
+
+    for (const key of ['pet', 'cat', 'sound', 'validation']) {
+      if (!appStore.has(key) && legacyStore.has(key)) {
+        appStore.set(key, legacyStore.get(key));
+      }
+    }
+  } catch {
+    // Legacy migration is best-effort; the app can still use the new store.
+  }
+
+  return appStore;
+}
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: PET_ASSET_PROTOCOL,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
+const SINGLE_INSTANCE_LOCK_ID = crypto.createHash('sha1').update(`${app.getAppPath()}|${app.getPath('userData')}`).digest('hex').slice(0, 12);
+const SINGLE_INSTANCE_LOCK_PATH = path.join(app.getPath('temp'), `pawkit-single-instance-${SINGLE_INSTANCE_LOCK_ID}.lock`);
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 let ownsProcessLock = false;
 
@@ -126,7 +209,570 @@ function releaseProcessLock() {
   }
 }
 
+function getRepoRoot() {
+  return path.resolve(__dirname, '..');
+}
+
+function getCommunityPetsDir() {
+  return path.join(getRepoRoot(), 'pets', 'community');
+}
+
+function getBuiltInPetsDir() {
+  return path.join(getRepoRoot(), 'pets', 'builtin');
+}
+
+
+function getImportedPetsDir() {
+  return path.join(app.getPath('userData'), 'pets', 'imported');
+}
+
+function getPetSearchRoots() {
+  return [
+    { source: 'imported', directory: getImportedPetsDir() },
+    { source: 'community', directory: getCommunityPetsDir() },
+    { source: 'builtin', directory: getBuiltInPetsDir() },
+  ];
+}
+
+function getPersistedActivePetDir() {
+  return store.get(PET_ACTIVE_PACKAGE_STORE_KEY, '');
+}
+
+
+function getPetWindowSize() {
+  const packageInfo = getActivePetPackage();
+  return calculatePetWindowSize(packageInfo.manifest?.sprite ?? PET_DEFAULT_WINDOW_SIZE);
+}
+
+function getDisplayDescriptors() {
+  const primaryId = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((display) => ({
+    id: display.id,
+    primary: display.id === primaryId,
+    scaleFactor: display.scaleFactor,
+    workArea: display.workArea,
+  }));
+}
+
+function normalizePetPlacementForCurrentSize(placement) {
+  if (!placement?.bounds) return placement ?? null;
+  const petSize = getPetWindowSize();
+  return {
+    ...placement,
+    bounds: {
+      ...placement.bounds,
+      width: petSize.width,
+      height: petSize.height,
+    },
+  };
+}
+
+function getPersistedPetPlacement() {
+  return normalizePetPlacementForCurrentSize(store.get(PET_PLACEMENT_STORE_KEY, null));
+}
+
+function resolveInitialPetPlacement() {
+  const displays = getDisplayDescriptors();
+  const persistedPlacement = getPersistedPetPlacement();
+
+  if (persistedPlacement?.bounds) {
+    return resolvePlacementForDisplays(persistedPlacement, displays, {
+      padding: PET_PLACEMENT_PADDING,
+    });
+  }
+
+  const primaryDisplay = displays.find((display) => display.primary) ?? displays[0];
+  return createDefaultPlacement(primaryDisplay.workArea, getPetWindowSize(), {
+    displayId: primaryDisplay.id,
+  });
+}
+
+function getCurrentPetPlacement() {
+  if (!petPlacementState) {
+    petPlacementState = resolveInitialPetPlacement();
+  }
+
+  return petPlacementState;
+}
+
+function persistPetPlacement() {
+  if (!petPlacementState) return;
+  store.set(PET_PLACEMENT_STORE_KEY, petPlacementState);
+}
+
+function createPetPlacementFromBounds(bounds) {
+  const petSize = getPetWindowSize();
+  const nextBounds = {
+    x: Math.round(Number(bounds?.x) || 0),
+    y: Math.round(Number(bounds?.y) || 0),
+    width: petSize.width,
+    height: petSize.height,
+  };
+  const center = {
+    x: nextBounds.x + nextBounds.width / 2,
+    y: nextBounds.y + nextBounds.height / 2,
+  };
+  const display = screen.getDisplayNearestPoint(center);
+  const clampedBounds = clampRectToWorkArea(nextBounds, display.workArea, {
+    padding: PET_PLACEMENT_PADDING,
+  });
+
+  return {
+    displayId: display.id,
+    anchor: 'manual',
+    bounds: clampedBounds,
+    scaleFactor: display.scaleFactor,
+  };
+}
+
+function applyPetPlacementBounds(bounds, options = {}) {
+  petPlacementState = createPetPlacementFromBounds(bounds);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const petSize = getPetWindowSize();
+    mainWindow.setBounds({
+      ...petPlacementState.bounds,
+      width: petSize.width,
+      height: petSize.height,
+    }, false);
+  }
+
+  if (options.persist) {
+    persistPetPlacement();
+  }
+
+  return petPlacementState;
+}
+
+function normalizeDragPoint(point = {}) {
+  const x = Number(point.screenX);
+  const y = Number(point.screenY);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  return {
+    screenX: x,
+    screenY: y,
+  };
+}
+
+function setPetRuntimeEvent(eventName, options = {}) {
+  petRuntimeState = reducePetBehaviorState(petRuntimeState, eventName, { now: Date.now() });
+  if (options.notify !== false) {
+    sendPetStateUpdate();
+  }
+  return createPetSnapshot();
+}
+
+function startPetDrag(point) {
+  const dragPoint = normalizeDragPoint(point);
+  if (!dragPoint || !mainWindow || mainWindow.isDestroyed()) return getCurrentPetPlacement();
+
+  petDragState = {
+    startPoint: dragPoint,
+    startBounds: mainWindow.getBounds(),
+    directionState: createDragDirectionState(dragPoint),
+  };
+
+  return getCurrentPetPlacement();
+}
+
+function updatePetDragDirection(dragPoint, options = {}) {
+  if (!petDragState) return null;
+
+  const advanced = advanceDragDirectionState(petDragState.directionState, dragPoint);
+  petDragState.directionState = advanced.state;
+
+  if (!advanced.changed) return advanced.direction;
+
+  setPetRuntimeEvent(advanced.direction === 'left'
+    ? PET_RUNTIME_EVENT.MOVING_LEFT
+    : PET_RUNTIME_EVENT.MOVING_RIGHT, options);
+  return advanced.direction;
+}
+
+function movePetDrag(point, options = {}) {
+  const dragPoint = normalizeDragPoint(point);
+  if (!dragPoint || !mainWindow || mainWindow.isDestroyed()) return getCurrentPetPlacement();
+
+  if (!petDragState) {
+    startPetDrag(dragPoint);
+  }
+
+  const dx = dragPoint.screenX - petDragState.startPoint.screenX;
+  const dy = dragPoint.screenY - petDragState.startPoint.screenY;
+  updatePetDragDirection(dragPoint, options);
+
+  const petSize = getPetWindowSize();
+  return applyPetPlacementBounds({
+    x: petDragState.startBounds.x + dx,
+    y: petDragState.startBounds.y + dy,
+    width: petSize.width,
+    height: petSize.height,
+  });
+}
+
+function endPetDrag(point) {
+  const placement = petDragState ? movePetDrag(point, { notify: false }) : getCurrentPetPlacement();
+  petDragState = null;
+  persistPetPlacement();
+  setPetRuntimeEvent(PET_RUNTIME_EVENT.APP_STARTED);
+  return placement;
+}
+
+function resetPetPlacement() {
+  const displays = getDisplayDescriptors();
+  const petSize = getPetWindowSize();
+  const primaryDisplay = displays.find((display) => display.primary) ?? displays[0];
+  const placement = createDefaultPlacement(primaryDisplay.workArea, petSize, {
+    displayId: primaryDisplay.id,
+  });
+  petPlacementState = placement;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBounds({
+      ...placement.bounds,
+      width: petSize.width,
+      height: petSize.height,
+    }, false);
+    mainWindow.showInactive();
+  }
+
+  persistPetPlacement();
+  sendPetStateUpdate();
+  return placement;
+}
+
+function createPetAssetUrl(filePath) {
+  const resolvedPath = path.resolve(filePath);
+  const token = Buffer.from(resolvedPath, 'utf8').toString('base64url');
+  petAssetRegistry.set(token, resolvedPath);
+  return `${PET_ASSET_PROTOCOL}://asset/${token}`;
+}
+
+function registerPetAssetProtocol() {
+  if (hasRegisteredPetAssetProtocol) return;
+  hasRegisteredPetAssetProtocol = true;
+
+  protocol.handle(PET_ASSET_PROTOCOL, (request) => {
+    const url = new URL(request.url);
+    if (url.hostname !== 'asset') {
+      return new Response('Unknown Pawkit pet asset host', { status: 404 });
+    }
+
+    const token = decodeURIComponent(url.pathname.replace(/^\//, ''));
+    const filePath = petAssetRegistry.get(token);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return new Response('Pawkit pet asset not found', { status: 404 });
+    }
+
+    return net.fetch(pathToFileURL(filePath).href);
+  });
+}
+
+function createLoadedPetPackagePayload(loaded, candidate, warnings = []) {
+  return {
+    ok: true,
+    errors: [],
+    warnings,
+    source: candidate.source,
+    packageDir: candidate.directory,
+    manifest: loaded.manifest,
+    spritePath: loaded.spritePath,
+    spriteUrl: createPetAssetUrl(loaded.spritePath),
+  };
+}
+
+function loadActivePetPackage() {
+  const candidates = createPetPackageCandidates({
+    envDir: process.env.PAWKIT_ACTIVE_PET_DIR,
+    persistedDir: getPersistedActivePetDir(),
+    importedDir: getImportedPetsDir(),
+    communityDir: getCommunityPetsDir(),
+    builtInDir: getBuiltInPetsDir(),
+  });
+  const failures = [];
+
+  for (const candidate of candidates) {
+    const loaded = loadPetPackage(candidate.directory);
+    if (!loaded.ok) {
+      failures.push(`${candidate.source}: ${candidate.directory}: ${loaded.errors.join('; ')}`);
+      continue;
+    }
+
+    store.set(PET_ACTIVE_PACKAGE_STORE_KEY, candidate.directory);
+    return createLoadedPetPackagePayload(loaded, candidate, failures);
+  }
+
+  return {
+    ok: false,
+    errors: failures.length > 0
+      ? failures
+      : ['No pet package found. Use tray menu to import a Codex Pet package.'],
+    warnings: [],
+    source: null,
+    packageDir: null,
+    manifest: null,
+    spritePath: null,
+    spriteUrl: null,
+  };
+}
+
+function getActivePetPackage() {
+  if (!activePetPackage) {
+    activePetPackage = loadActivePetPackage();
+  }
+
+  return activePetPackage;
+}
+
+function reloadActivePetPackage() {
+  activePetPackage = loadActivePetPackage();
+  rebuildTrayMenu();
+  sendPetStateUpdate();
+  return createPetSnapshot();
+}
+
+function listAvailablePetPackages() {
+  const packageInfo = getActivePetPackage();
+  return listPetPackages(getPetSearchRoots(), {
+    activePackageDir: packageInfo.packageDir ?? getPersistedActivePetDir(),
+  });
+}
+
+function setActivePetPackage(packageDir) {
+  const resolvedDir = path.resolve(String(packageDir || ''));
+  const availablePackage = listAvailablePetPackages().find((petPackage) => petPackage.packageDir === resolvedDir);
+  if (!availablePackage) {
+    return {
+      ok: false,
+      errors: ['pet package is not available'],
+      active: createPetSnapshot(),
+    };
+  }
+
+  const loaded = loadPetPackage(resolvedDir);
+  if (!loaded.ok) {
+    return {
+      ok: false,
+      errors: loaded.errors,
+      active: createPetSnapshot(),
+    };
+  }
+
+  const source = availablePackage.source ?? 'unknown';
+  store.set(PET_ACTIVE_PACKAGE_STORE_KEY, resolvedDir);
+  activePetPackage = createLoadedPetPackagePayload(loaded, { source, directory: resolvedDir });
+  petPlacementState = resolvePlacementForDisplays(normalizePetPlacementForCurrentSize(getCurrentPetPlacement()), getDisplayDescriptors(), {
+    padding: PET_PLACEMENT_PADDING,
+  });
+  syncWindowToPresenceState();
+  persistPetPlacement();
+  petRuntimeState = reducePetBehaviorState(petRuntimeState, PET_RUNTIME_EVENT.APP_STARTED, { now: Date.now() });
+  rebuildTrayMenu();
+  sendPetStateUpdate();
+
+  return {
+    ok: true,
+    errors: [],
+    active: createPetSnapshot(),
+  };
+}
+
+async function importPetPackageFromPath(sourcePath, options = {}) {
+  const imported = await importPetPackage(sourcePath, getImportedPetsDir());
+  if (!imported.ok) {
+    return {
+      ok: false,
+      errors: imported.errors ?? ['pet package import failed'],
+      imported: null,
+      active: createPetSnapshot(),
+    };
+  }
+
+  const activation = options.activate === false
+    ? { ok: true, errors: [], active: createPetSnapshot() }
+    : setActivePetPackage(imported.packageDir);
+
+  return {
+    ok: activation.ok,
+    errors: activation.errors ?? [],
+    imported: {
+      packageDir: imported.packageDir,
+      manifest: imported.manifest,
+    },
+    active: activation.active,
+  };
+}
+
+function createPetImportDialogOptions(sourceType = 'any') {
+  const safeType = sourceType === 'zip' || sourceType === 'directory' ? sourceType : 'any';
+  const properties = safeType === 'zip'
+    ? ['openFile']
+    : safeType === 'directory'
+      ? ['openDirectory']
+      : ['openFile', 'openDirectory'];
+
+  return {
+    title: '导入宠物包',
+    message: safeType === 'directory'
+      ? '选择已解压的 Codex Pet 宠物目录'
+      : '选择 Codex Pet zip 包或已解压的宠物目录',
+    properties,
+    filters: safeType === 'directory'
+      ? []
+      : [
+          { name: 'Codex Pet Package', extensions: ['zip'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+  };
+}
+
+async function choosePetImportSource(sourceType = 'any', ownerWindow = null) {
+  const shouldRestoreOwner = Boolean(ownerWindow && !ownerWindow.isDestroyed() && ownerWindow.isVisible());
+
+  if (shouldRestoreOwner) {
+    ownerWindow.hide();
+  }
+
+  try {
+    const result = await dialog.showOpenDialog(createPetImportDialogOptions(sourceType));
+
+    if (result.canceled || !result.filePaths?.[0]) {
+      return {
+        ok: false,
+        cancelled: true,
+        errors: [],
+        imported: null,
+        active: createPetSnapshot(),
+      };
+    }
+
+    return await importPetPackageFromPath(result.filePaths[0]);
+  } finally {
+    if (shouldRestoreOwner && ownerWindow && !ownerWindow.isDestroyed()) {
+      ownerWindow.show();
+      ownerWindow.focus();
+    }
+  }
+}
+
+function getImportWindowBounds() {
+  const display = screen.getPrimaryDisplay();
+  const size = { width: 420, height: 280 };
+  return {
+    ...size,
+    x: Math.round(display.workArea.x + (display.workArea.width - size.width) / 2),
+    y: Math.round(display.workArea.y + (display.workArea.height - size.height) / 2),
+  };
+}
+
+function loadImportWindowRenderer(window) {
+  if (DEV_SERVER_URL) {
+    const url = new URL(DEV_SERVER_URL);
+    url.searchParams.set('view', 'pet-import');
+    return window.loadURL(url.toString());
+  }
+
+  const distPath = path.join(__dirname, '..', 'dist', 'renderer', 'index.html');
+  if (!fs.existsSync(distPath)) {
+    throw new Error(`Missing renderer build output at ${distPath}. Run "npm run build" before opening pet import panel.`);
+  }
+  return window.loadFile(distPath, { query: { view: 'pet-import' } });
+}
+
+function openPetImportWindow() {
+  if (importWindow && !importWindow.isDestroyed()) {
+    const bounds = getImportWindowBounds();
+    importWindow.setBounds(bounds, false);
+    importWindow.show();
+    importWindow.focus();
+    return;
+  }
+
+  const bounds = getImportWindowBounds();
+  importWindow = new BrowserWindow({
+    ...bounds,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    title: '导入宠物包',
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  importWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  importWindow.once('ready-to-show', () => {
+    importWindow?.show();
+    importWindow?.focus();
+  });
+  importWindow.on('closed', () => {
+    importWindow = null;
+  });
+  loadImportWindowRenderer(importWindow).catch((error) => {
+    console.error('Failed to load pet import panel:', error);
+    if (importWindow && !importWindow.isDestroyed()) {
+      importWindow.close();
+    }
+  });
+}
+
+async function importPetPackageFromDialog() {
+  return choosePetImportSource('any');
+}
+
+function createPetSnapshot() {
+  const packageInfo = getActivePetPackage();
+  if (!packageInfo.ok || !packageInfo.manifest) {
+    return {
+      ok: false,
+      errors: packageInfo.errors,
+      warnings: packageInfo.warnings ?? [],
+      source: packageInfo.source ?? null,
+      packageDir: packageInfo.packageDir,
+      manifest: packageInfo.manifest,
+      spriteUrl: packageInfo.spriteUrl,
+      placement: getCurrentPetPlacement(),
+      behavior: petRuntimeState,
+      animationName: null,
+      animation: null,
+    };
+  }
+
+  const resolvedAnimation = resolveAnimationForSemanticState(packageInfo.manifest, petRuntimeState.semanticState);
+
+  return {
+    ok: Boolean(resolvedAnimation.animation),
+    errors: resolvedAnimation.animation ? [] : [`No animation for ${petRuntimeState.semanticState}`],
+    warnings: packageInfo.warnings ?? [],
+    source: packageInfo.source ?? null,
+    packageDir: packageInfo.packageDir,
+    manifest: packageInfo.manifest,
+    spriteUrl: packageInfo.spriteUrl,
+    placement: getCurrentPetPlacement(),
+    behavior: petRuntimeState,
+    animationName: resolvedAnimation.animationName,
+    animation: resolvedAnimation.animation,
+  };
+}
+
+function sendPetStateUpdate() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('pet-state-updated', createPetSnapshot());
+}
+
 let mainWindow = null;
+let importWindow = null;
 let tray = null;
 let roamingRuntimeState = null;
 let roamingInterval = null;
@@ -139,6 +785,13 @@ let presenceRuntimeState = null;
 let presenceInterval = null;
 let automationIdleSequence = null;
 let automationIdleSequenceIndex = 0;
+let petRuntimeState = createPetBehaviorState({
+  semanticState: process.env.PAWKIT_AUTOMATION_PET_STATE,
+  now: Date.now(),
+});
+let activePetPackage = null;
+let petPlacementState = null;
+let petDragState = null;
 
 function createFallbackTrayIcon() {
   const svg = `
@@ -176,6 +829,7 @@ function normalizeSoundVolumes(input = {}, base = DEFAULT_SOUND_VOLUMES) {
 
 function getPrimaryRoamingArea() {
   const display = screen.getPrimaryDisplay();
+  const petSize = getPetWindowSize();
   const top = display.workArea.y + ROAMING_EDGE_INSET.top;
   const bottom = display.bounds.y + display.bounds.height - ROAMING_EDGE_INSET.bottom;
   const left = display.bounds.x + ROAMING_EDGE_INSET.left;
@@ -184,8 +838,8 @@ function getPrimaryRoamingArea() {
   return {
     x: left,
     y: top,
-    width: Math.max(DEFAULT_WINDOW_SIZE.width, right - left),
-    height: Math.max(DEFAULT_WINDOW_SIZE.height, bottom - top),
+    width: Math.max(petSize.width, right - left),
+    height: Math.max(petSize.height, bottom - top),
   };
 }
 
@@ -271,7 +925,7 @@ function getCurrentPresenceSnapshot() {
   }
   return {
     ...presenceRuntimeState,
-    dock: createDockedPoint(getPrimaryRoamingArea(), DEFAULT_WINDOW_SIZE),
+    dock: createDockedPoint(getPrimaryRoamingArea(), getPetWindowSize()),
   };
 }
 
@@ -312,21 +966,6 @@ function getCurrentCareSnapshot() {
     lastWatered: store.get('cat.lastWatered', null),
     lastPet: store.get('cat.lastPet', null),
   };
-}
-
-function describeGauge(value, labels) {
-  const numericValue = Number(value) || 0;
-  if (numericValue < 30) return labels.low;
-  if (numericValue < 60) return labels.medium;
-  return labels.high;
-}
-
-function describeTrust(value) {
-  const numericValue = Number(value) || 0;
-  if (numericValue < 2) return '还在观察';
-  if (numericValue < 3.5) return '开始熟悉';
-  if (numericValue < 4.5) return '比较亲近';
-  return '非常信任';
 }
 
 function getPersistedValidationState() {
@@ -443,14 +1082,6 @@ function recordValidationPresenceThresholdChange(thresholdSeconds) {
 }
 
 
-async function openValidationReport() {
-  const paths = writeValidationArtifacts();
-  const result = await shell.openPath(paths.markdown);
-  if (result) {
-    console.error('Failed to open validation report:', result);
-  }
-}
-
 function sendCareStateUpdate() {
   if (!mainWindow || mainWindow.isDestroyed() || !careRuntimeState) return;
   mainWindow.webContents.send('cat-state-updated', getCurrentCareSnapshot());
@@ -485,79 +1116,42 @@ function setPresenceIdleThresholdFromMenu(seconds) {
   rebuildTrayMenu();
 }
 
+function showPetWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.showInactive();
+  syncWindowToPresenceState();
+}
+
+function hidePetWindow() {
+  mainWindow?.hide();
+}
+
+function getActivePetNameForTray() {
+  const packageInfo = getActivePetPackage();
+  if (packageInfo.ok && packageInfo.manifest?.name) return packageInfo.manifest.name;
+  return '等待导入';
+}
+
 function rebuildTrayMenu() {
   if (!tray) return;
 
-  const safeCareState = careRuntimeState ?? createInitialCareState({ now: Date.now() });
-  const primaryNeed = getPrimaryCareNeedPresentation(safeCareState);
-  const recommendedAction = primaryNeed?.action ?? null;
-  syncValidationNeedPresentation(primaryNeed);
-  const careSummary = primaryNeed
-    ? `当前需要：${primaryNeed.menuSummary}`
-    : '当前状态：稳定，可以随时照料它';
+  const packages = listAvailablePetPackages();
+  const contextMenu = Menu.buildFromTemplate(createPetMvpTrayMenuTemplate({
+    activePetName: getActivePetNameForTray(),
+    packages,
+    handlers: {
+      onShow: showPetWindow,
+      onHide: hidePetWindow,
+      onResetPlacement: resetPetPlacement,
+      onImportPet: openPetImportWindow,
+      onSetActivePet: (packageDir) => setActivePetPackage(packageDir),
+      onQuit: () => app.quit(),
+    },
+  }));
 
-  const presenceSnapshot = getCurrentPresenceSnapshot();
-  const modeLabel = presenceSnapshot.mode === PRESENCE_MODE.IDLE ? '闲置态' : '工作态';
-  const overrideLabel = presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.AUTO
-    ? '自动'
-    : presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.IDLE
-      ? '强制闲置态'
-      : '强制工作态';
-  const thresholdLabel = formatIdleThresholdLabel(presenceSnapshot.idleThresholdSeconds);
-
-  const contextMenu = Menu.buildFromTemplate([
-    { label: `当前模式：${modeLabel}`, enabled: false },
-    { label: `控制方式：${overrideLabel}`, enabled: false },
-    { label: `闲置阈值：${thresholdLabel}`, enabled: false },
-    { type: 'separator' },
-    {
-      label: '模式控制',
-      submenu: [
-        { label: '自动', type: 'radio', checked: presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.AUTO, click: () => setPresenceOverrideFromMenu(PRESENCE_OVERRIDE.AUTO) },
-        { label: '强制工作态', type: 'radio', checked: presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.WORK, click: () => setPresenceOverrideFromMenu(PRESENCE_OVERRIDE.WORK) },
-        { label: '强制闲置态', type: 'radio', checked: presenceSnapshot.manualOverride === PRESENCE_OVERRIDE.IDLE, click: () => setPresenceOverrideFromMenu(PRESENCE_OVERRIDE.IDLE) },
-      ],
-    },
-    {
-      label: '闲置阈值',
-      submenu: IDLE_THRESHOLD_OPTIONS.map((seconds) => ({
-        label: formatIdleThresholdLabel(seconds),
-        type: 'radio',
-        checked: presenceSnapshot.idleThresholdSeconds === seconds,
-        click: () => setPresenceIdleThresholdFromMenu(seconds),
-      })),
-    },
-    { type: 'separator' },
-    { label: careSummary, enabled: false },
-    { type: 'separator' },
-    { label: getCareActionLabel('feed', recommendedAction), click: () => applyCareAction('feed', { source: 'tray' }) },
-    { label: getCareActionLabel('water', recommendedAction), click: () => applyCareAction('water', { source: 'tray' }) },
-    { label: getCareActionLabel('pet', recommendedAction), click: () => applyCareAction('pet', { source: 'tray' }) },
-    { type: 'separator' },
-    {
-      label: `食物状态：${describeGauge(safeCareState.hunger, { low: '偏低', medium: '正常', high: '充足' })}`,
-      enabled: false,
-    },
-    {
-      label: `饮水状态：${describeGauge(safeCareState.hydration, { low: '偏低', medium: '正常', high: '充足' })}`,
-      enabled: false,
-    },
-    {
-      label: `心情状态：${describeGauge(safeCareState.happiness, { low: '想玩', medium: '平稳', high: '放松' })}`,
-      enabled: false,
-    },
-    { label: `信任状态：${describeTrust(safeCareState.trustLevel)}`, enabled: false },
-    { type: 'separator' },
-    { label: '打开验证报告', click: () => void openValidationReport() },
-    { type: 'separator' },
-    { label: '显示 Pawkit', click: () => mainWindow?.showInactive() },
-    { label: '隐藏窗口', click: () => mainWindow?.hide() },
-    { label: '退出', click: () => app.quit() },
-  ]);
-
-  tray.setToolTip(primaryNeed ? `Pawkit · ${primaryNeed.menuSummary}` : 'Pawkit · 状态稳定');
+  tray.setToolTip(`Pawkit · ${getActivePetNameForTray()}`);
   if (process.platform === 'darwin') {
-    tray.setTitle(primaryNeed?.trayTitle ?? 'Pawkit');
+    tray.setTitle('Pawkit');
   }
   tray.setContextMenu(contextMenu);
 }
@@ -634,6 +1228,9 @@ function getAutomationRendererSnapshotScript() {
     const catPoseTarget = document.querySelector('[data-cat-pose]');
     const panel = document.querySelector('[aria-label="care-status"]');
     const hud = document.querySelector('[aria-label="care-hud"]');
+    const pet = document.querySelector('[data-pet-id]');
+    const petButton = document.querySelector('button[aria-label]');
+    const petBubble = document.querySelector('[aria-label="pet-status-bubble"]');
     const toSnapshot = (element) => {
       const rect = element ? element.getBoundingClientRect() : null;
       const style = element ? window.getComputedStyle(element) : null;
@@ -661,6 +1258,9 @@ function getAutomationRendererSnapshotScript() {
       };
     };
     const careStatus = toSnapshot(panel);
+    const petSnapshot = toSnapshot(pet);
+    const petButtonSnapshot = toSnapshot(petButton);
+    const petBubbleSnapshot = toSnapshot(petBubble);
     return {
       presenceMode: root?.getAttribute('data-presence-mode') ?? null,
       visualState: visualStateTarget?.getAttribute('data-visual-state') ?? null,
@@ -670,6 +1270,15 @@ function getAutomationRendererSnapshotScript() {
       rect: careStatus.rect,
       careStatus,
       careHud: toSnapshot(hud),
+      pet: {
+        id: pet?.getAttribute('data-pet-id') ?? null,
+        state: pet?.getAttribute('data-pet-state') ?? null,
+        animation: pet?.getAttribute('data-pet-animation') ?? null,
+        visible: petSnapshot.visible,
+        rect: petSnapshot.rect,
+        button: petButtonSnapshot,
+        bubble: petBubbleSnapshot,
+      },
     };
   })()`;
 }
@@ -747,6 +1356,92 @@ function maybeWriteAutomationPresenceStatusSnapshot() {
   }, intervalMs);
 }
 
+function parseAutomationPetDragDelta() {
+  const raw = String(process.env.PAWKIT_AUTOMATION_PET_DRAG_DELTA || '').trim();
+  if (!raw) return null;
+
+  const points = raw
+    .split(';')
+    .map((chunk) => {
+      const [rawX, rawY] = chunk.split(',');
+      const dx = Number(rawX);
+      const dy = Number(rawY);
+      return Number.isFinite(dx) && Number.isFinite(dy) ? { dx, dy } : null;
+    })
+    .filter(Boolean);
+
+  if (points.length === 0) return null;
+  return points;
+}
+
+function maybeRunAutomationPetDrag() {
+  const delta = parseAutomationPetDragDelta();
+  const statusFile = String(process.env.PAWKIT_AUTOMATION_PET_DRAG_STATUS_FILE || '').trim();
+  if (!delta && !statusFile) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  setTimeout(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    const before = mainWindow.getBounds();
+    const startPoint = {
+      screenX: before.x + before.width / 2,
+      screenY: before.y + before.height / 2,
+    };
+    const deltas = delta ?? [{ dx: 0, dy: 0 }];
+    const dragSteps = deltas.map((step) => ({
+      screenX: startPoint.screenX + step.dx,
+      screenY: startPoint.screenY + step.dy,
+    }));
+
+    startPetDrag(startPoint);
+    const dragSnapshots = dragSteps.map((stepPoint, index) => {
+      const stepPlacement = movePetDrag(stepPoint);
+      const stepSnapshot = createPetSnapshot();
+      return {
+        index,
+        delta: deltas[index],
+        placement: stepPlacement,
+        state: stepSnapshot.behavior.semanticState,
+        animation: stepSnapshot.animationName,
+      };
+    });
+    const lastPoint = dragSteps.at(-1) ?? startPoint;
+    const duringPlacement = dragSnapshots.at(-1)?.placement ?? getCurrentPetPlacement();
+    const duringDrag = createPetSnapshot();
+    const placement = endPetDrag(lastPoint);
+    const afterDrag = createPetSnapshot();
+    const after = mainWindow.getBounds();
+
+    if (!statusFile) return;
+
+    try {
+      fs.writeFileSync(
+        statusFile,
+        JSON.stringify({
+          executedAt: new Date().toISOString(),
+          delta: deltas,
+          before,
+          after,
+          dragSnapshots,
+          duringPlacement,
+          duringDrag: {
+            state: duringDrag.behavior.semanticState,
+            animation: duringDrag.animationName,
+          },
+          placement,
+          afterDrag: {
+            state: afterDrag.behavior.semanticState,
+            animation: afterDrag.animationName,
+          },
+        }, null, 2),
+      );
+    } catch (error) {
+      console.error('Failed to write automation pet drag status file:', error);
+    }
+  }, 650);
+}
+
 function maybeRunAutomationCareActions() {
   const rawActions = String(process.env.PAWKIT_AUTOMATION_ACTIONS || '').trim();
   if (!rawActions) return;
@@ -808,18 +1503,16 @@ function sendPresenceStateUpdate() {
 
 function syncWindowToPresenceState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const presenceSnapshot = getCurrentPresenceSnapshot();
-  const position = presenceSnapshot.mode === PRESENCE_MODE.WORK
-    ? createDockedPoint(getPrimaryRoamingArea(), DEFAULT_WINDOW_SIZE)
-    : roamingRuntimeState;
-  if (!position) return;
+  const placement = getCurrentPetPlacement();
+  const petSize = getPetWindowSize();
+  if (!placement?.bounds) return;
 
   mainWindow.setBounds(
     {
-      x: Math.round(position.x),
-      y: Math.round(position.y),
-      width: DEFAULT_WINDOW_SIZE.width,
-      height: DEFAULT_WINDOW_SIZE.height,
+      x: Math.round(placement.bounds.x),
+      y: Math.round(placement.bounds.y),
+      width: petSize.width,
+      height: petSize.height,
     },
     false,
   );
@@ -841,6 +1534,7 @@ function startRoamingLoop() {
     if (presenceRuntimeState?.mode === PRESENCE_MODE.IDLE) {
       roamingRuntimeState = advanceRoamingState(roamingRuntimeState, {
         workArea: getPrimaryRoamingArea(),
+        windowSize: getPetWindowSize(),
         now: Date.now(),
         rng: Math.random,
       });
@@ -878,7 +1572,15 @@ function startPresenceLoop() {
         presenceRuntimeState.mode,
         now - previous.lastModeChangedAt,
       );
+      petRuntimeState = reducePetBehaviorState(
+        petRuntimeState,
+        presenceRuntimeState.mode === PRESENCE_MODE.IDLE
+          ? PET_RUNTIME_EVENT.USER_INACTIVE
+          : PET_RUNTIME_EVENT.USER_ACTIVE,
+        { now },
+      );
       persistPresenceState();
+      sendPetStateUpdate();
       rebuildTrayMenu();
     }
 
@@ -895,6 +1597,7 @@ const createWindow = () => {
   roamingRuntimeState = createInitialRoamingState({
     workArea,
     persistedState: getPersistedRoamingState(),
+    windowSize: getPetWindowSize(),
     now,
     rng: Math.random,
   });
@@ -914,12 +1617,14 @@ const createWindow = () => {
     now,
   });
   persistCareState(true);
+  const initialPetPlacement = getCurrentPetPlacement();
+  const initialPetSize = getPetWindowSize();
 
   mainWindow = new BrowserWindow({
-    width: DEFAULT_WINDOW_SIZE.width,
-    height: DEFAULT_WINDOW_SIZE.height,
-    x: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, DEFAULT_WINDOW_SIZE) : roamingRuntimeState).x),
-    y: Math.round((presenceRuntimeState.mode === PRESENCE_MODE.WORK ? createDockedPoint(workArea, DEFAULT_WINDOW_SIZE) : roamingRuntimeState).y),
+    width: initialPetSize.width,
+    height: initialPetSize.height,
+    x: Math.round(initialPetPlacement.bounds.x),
+    y: Math.round(initialPetPlacement.bounds.y),
     frame: false,
     transparent: true,
     resizable: false,
@@ -954,15 +1659,17 @@ const createWindow = () => {
   }
 
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  mainWindow.setIgnoreMouseEvents(false);
   mainWindow.once('ready-to-show', () => {
     mainWindow?.showInactive();
     syncWindowToPresenceState();
     sendRoamingStateUpdate();
     sendPresenceStateUpdate();
     sendCareStateUpdate();
+    sendPetStateUpdate();
     maybeWriteAutomationRendererStatusSnapshot();
     maybeWriteAutomationPresenceStatusSnapshot();
+    maybeRunAutomationPetDrag();
   });
 
   startPresenceLoop();
@@ -1004,6 +1711,7 @@ const createTray = () => {
 
 app.whenReady().then(() => {
   if (!hasSingleInstanceLock) return;
+  registerPetAssetProtocol();
   recordValidationSession();
   createWindow();
   createTray();
@@ -1027,6 +1735,7 @@ app.on('before-quit', () => {
   persistRoamingState(true);
   persistPresenceState();
   persistCareState(true);
+  persistPetPlacement();
   persistValidationState();
   stopPresenceLoop();
   stopRoamingLoop();
@@ -1060,6 +1769,62 @@ ipcMain.handle('get-cat-state', () => {
 
 
 ipcMain.handle('get-presence-state', () => getCurrentPresenceSnapshot());
+
+ipcMain.handle('pet:get-active', () => createPetSnapshot());
+
+ipcMain.handle('pet:event', (_event, eventName) => {
+  const safeEventName = Object.values(PET_RUNTIME_EVENT).includes(eventName)
+    ? eventName
+    : PET_RUNTIME_EVENT.APP_STARTED;
+  return setPetRuntimeEvent(safeEventName);
+});
+
+ipcMain.handle('pet:list', () => listAvailablePetPackages());
+
+ipcMain.handle('pet:set-active', (_event, packageDir) => setActivePetPackage(packageDir));
+
+ipcMain.handle('pet:import', async (_event, sourcePath) => {
+  if (sourcePath) return importPetPackageFromPath(sourcePath);
+  openPetImportWindow();
+  return {
+    ok: false,
+    cancelled: true,
+    errors: [],
+    imported: null,
+    active: createPetSnapshot(),
+  };
+});
+
+ipcMain.handle('pet:choose-import-source', async (event, sourceType) => {
+  const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+  return choosePetImportSource(sourceType, sourceWindow);
+});
+
+ipcMain.handle('pet:close-import-panel', (event) => {
+  const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+  if (sourceWindow && !sourceWindow.isDestroyed()) {
+    sourceWindow.close();
+  }
+  return createPetSnapshot();
+});
+
+ipcMain.handle('pet:reset-placement', () => resetPetPlacement());
+
+ipcMain.handle('pet:show', () => {
+  showPetWindow();
+  return createPetSnapshot();
+});
+
+ipcMain.handle('pet:hide', () => {
+  hidePetWindow();
+  return createPetSnapshot();
+});
+
+ipcMain.handle('pet:drag-start', (_event, point) => startPetDrag(point));
+
+ipcMain.handle('pet:drag-move', (_event, point) => movePetDrag(point));
+
+ipcMain.handle('pet:drag-end', (_event, point) => endPetDrag(point));
 
 ipcMain.handle('set-presence-idle-threshold', (_event, seconds) => {
   setPresenceIdleThresholdFromMenu(seconds);
