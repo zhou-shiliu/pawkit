@@ -52,6 +52,18 @@ After importing multiple pets, you can switch between them from the tray menu. P
 
 For states like clicking, moving, working, or failing, Pawkit can show a short message above the pet. The bubble is temporary and intentionally non-intrusive.
 
+## Download
+
+If you only want to use Pawkit, you do not need to download the source code. Download the package for your system from GitHub Releases:
+
+- macOS: `.dmg` or `.zip`
+- Windows: `.exe` installer or portable build
+- Linux: `.AppImage` or `.deb`
+
+Release page: <https://github.com/zhou-shiliu/pawkit/releases>
+
+> The release workflow builds desktop packages for all three platforms when a `v*` tag is pushed. It also supports manually rebuilding a selected tag from GitHub Actions.
+
 ## Installation and Launch
 
 ```bash

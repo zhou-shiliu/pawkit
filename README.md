@@ -52,6 +52,18 @@ spritesheet.webp
 
 在点击、移动、工作、失败等状态下，宠物头顶会短暂出现一句小提示。它不会常驻，也不会变成通知弹窗。
 
+## 下载
+
+如果你只是想使用 Pawkit，不需要下载源码。可以在 GitHub Releases 中下载对应系统的安装包：
+
+- macOS：`.dmg` 或 `.zip`
+- Windows：`.exe` 安装包或 portable 版本
+- Linux：`.AppImage` 或 `.deb`
+
+Release 页面：<https://github.com/zhou-shiliu/pawkit/releases>
+
+> 当前 release 工作流会在推送 `v*` 标签时自动构建三端包，也支持在 GitHub Actions 中手动选择 tag 重新发布。
+
 ## 安装与启动
 
 ```bash
